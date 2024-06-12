@@ -23,6 +23,8 @@ from fprime_gds.common.utils.data_desc_type import DataDescType
 DW_LOGGER = logging.getLogger("downlink")
 UP_LOGGER = logging.getLogger("uplink")
 
+acks = []
+
 
 class Downlinker:
     """Encapsulates communication downlink functions
@@ -77,6 +79,7 @@ class Downlinker:
         self.th_data.start()
 
     def deframing(self):
+        global acks
         """Deframing stage of downlink
 
         Reads in data from the raw adapter and runs the deframing. Collects data in a pool and continually runs
@@ -86,7 +89,14 @@ class Downlinker:
         while self.running:
             # Blocks until data is available, but may still return b"" if timeout
             pool += self.adapter.read()
-            frames, pool, discarded_data = self.deframer.deframe_all(pool, no_copy=True)
+            frames, pool, discarded_data, new_acks = self.deframer.deframe_all(pool, no_copy=True)
+            if new_acks:
+                for ack in new_acks:
+                    if ack is not None:
+                        acks.append(ack)
+                print(f'Acks len {len(acks)} {acks}')
+
+                
             try:
                 for frame in frames:
                     self.outgoing.put_nowait(frame)
@@ -190,6 +200,7 @@ class Uplinker:
         self.th_uplink.start()
 
     def uplink(self):
+        global acks
         """Runs uplink of data from ground to FSW
 
         Primary stage of the uplink process, reads data from the ground adapter, and passes the rest of the data to the
@@ -218,6 +229,23 @@ class Uplinker:
                             len(framed),
                             Uplinker.RETRY_COUNT,
                         )
+                if acks is not None and len(acks) > 0:
+                    for ack in acks:
+                        print(f'Uplinking ACK {ack}')
+                        for retry in range(Uplinker.RETRY_COUNT):
+                            if self.adapter.write(ack):
+                                self.loopback.add_loopback_frame(
+                                    Uplinker.get_handshake(ack)
+                                )
+                                break
+                        else:
+                            UP_LOGGER.warning(
+                                "Uplink failed to send %d bytes of data after %d retries",
+                                len(framed),
+                                Uplinker.RETRY_COUNT,
+                            )
+                    acks = []
+                        
         # An OSError might occur during shutdown and is harmless. If we are not shutting down, this error should be
         # propagated up the stack.
         except OSError:

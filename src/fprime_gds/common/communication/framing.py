@@ -61,15 +61,17 @@ class FramerDeframer(abc.ABC):
         :return: list of packets, remaining data, discarded/unframed/garbage data
         """
         packets = []
+        acks = []
         if not no_copy:
             data = copy.copy(data)
         discarded_aggregate = b""
         while True:
             # Deframe and return only on None
-            (packet, data, discarded) = self.deframe(data, no_copy=True)
+            (packet, data, discarded, ack) = self.deframe(data, no_copy=True)
             discarded_aggregate += discarded
-            if packet is None:
-                return packets, data, discarded_aggregate
+            if packet is None and ack is None:
+                return packets, data, discarded_aggregate, acks
+            acks.append(ack)
             packets.append(packet)
 
     @classmethod
