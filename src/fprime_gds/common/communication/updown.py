@@ -20,11 +20,13 @@ from fprime_gds.common.communication.framing import FramerDeframer
 from fprime_gds.common.communication.ground import GroundHandler
 from fprime_gds.common.utils.data_desc_type import DataDescType
 
+from cg_protocol import resend_unacked
+
+
 DW_LOGGER = logging.getLogger("downlink")
 UP_LOGGER = logging.getLogger("uplink")
 
 acks = []
-
 
 class Downlinker:
     """Encapsulates communication downlink functions
@@ -94,8 +96,6 @@ class Downlinker:
                 for ack in new_acks:
                     if ack is not None:
                         acks.append(ack)
-                print(f'Acks len {len(acks)} {acks}')
-
                 
             try:
                 for frame in frames:
@@ -210,6 +210,7 @@ class Uplinker:
         try:
             while self.running:
                 packets = self.ground.receive_all()
+                # send packets from gds
                 for packet in [
                     packet
                     for packet in packets
@@ -229,9 +230,10 @@ class Uplinker:
                             len(framed),
                             Uplinker.RETRY_COUNT,
                         )
+                # send acks
                 if acks is not None and len(acks) > 0:
                     for ack in acks:
-                        print(f'Uplinking ACK {ack}')
+                        print(f'[Uplinker] Uplinking ACK {ack}')
                         for retry in range(Uplinker.RETRY_COUNT):
                             if self.adapter.write(ack):
                                 self.loopback.add_loopback_frame(
@@ -241,10 +243,35 @@ class Uplinker:
                         else:
                             UP_LOGGER.warning(
                                 "Uplink failed to send %d bytes of data after %d retries",
-                                len(framed),
+                                len(ack),
                                 Uplinker.RETRY_COUNT,
                             )
                     acks = []
+                    
+                #resend packets
+                resends = resend_unacked()
+                if resends is not None and len(resends) > 0:
+                    for resend in resends:
+                        print(f'[Uplinker] Resending Packet {resend}')
+                        for retry in range(Uplinker.RETRY_COUNT):
+                            if self.adapter.write(resend):
+                                self.loopback.add_loopback_frame(
+                                    Uplinker.get_handshake(resend)
+                                )
+                                break
+                        else:
+                            UP_LOGGER.warning(
+                                "Uplink failed to send %d bytes of data after %d retries",
+                                len(resend),
+                                Uplinker.RETRY_COUNT,
+                            )
+
+                        
+
+
+                    
+                    
+                
                         
         # An OSError might occur during shutdown and is harmless. If we are not shutting down, this error should be
         # propagated up the stack.
