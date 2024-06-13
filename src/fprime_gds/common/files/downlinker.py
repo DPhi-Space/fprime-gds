@@ -31,7 +31,7 @@ LOGGER.setLevel(logging.INFO)
 class FileDownlinker(fprime_gds.common.handlers.DataHandler):
     """File writer class for decoded packets"""
 
-    def __init__(self, directory, timeout=20.0, log_dir=None):
+    def __init__(self, directory, timeout=60.0, log_dir=None):
         """
         FileWriter class constructor
 
