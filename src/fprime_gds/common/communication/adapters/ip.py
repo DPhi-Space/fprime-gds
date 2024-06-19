@@ -51,7 +51,7 @@ class IpAdapter(fprime_gds.common.communication.adapters.base.BaseAdapter):
     """
 
     # Interval to send a KEEPALIVE packet. None will turn off KEEPALIVE.
-    KEEPALIVE_INTERVAL = 5
+    KEEPALIVE_INTERVAL = None
     # Data to send out as part of the KEEPALIVE packet. Should not be null nor empty.
     KEEPALIVE_DATA = b"sitting well"
     MAXIMUM_DATA_SIZE = 4096
