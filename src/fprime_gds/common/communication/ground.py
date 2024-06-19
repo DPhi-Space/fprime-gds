@@ -10,6 +10,7 @@ available to the comm layer, and currently a single implementation used to attac
 
 import abc
 import logging
+import time
 
 from fprime_gds.common.communication.adapters.ip import TcpHandler
 
@@ -100,6 +101,7 @@ class TCPGround(GroundHandler):
 
         :param frames: bytes object of data to write out to the socket server
         """
+
         for packet in frames:
             framed = self.deframer.frame(packet)
             self.tcp.write(framed)

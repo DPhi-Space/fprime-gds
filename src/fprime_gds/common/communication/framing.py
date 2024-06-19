@@ -16,9 +16,9 @@ import copy
 import struct
 import sys
 from typing import Type
-
 from .checksum import calculate_checksum, CHECKSUM_MAPPING
 from fprime_gds.plugin.definitions import gds_plugin_implementation, gds_plugin_specification
+
 
 
 class FramerDeframer(abc.ABC):
@@ -69,6 +69,7 @@ class FramerDeframer(abc.ABC):
             # Deframe and return only on None
             (packet, data, discarded, ack) = self.deframe(data, no_copy=True)
             discarded_aggregate += discarded
+            
             if packet is None and ack is None:
                 return packets, data, discarded_aggregate, acks
             acks.append(ack)

@@ -200,6 +200,7 @@ class Uplinker:
         self.th_uplink.start()
 
     def uplink(self):
+        from cg_protocol import get_unacked_full
         global acks
         """Runs uplink of data from ground to FSW
 
@@ -207,28 +208,41 @@ class Uplinker:
         framer, and then onto the adapter to send to FSW. Uplink also generates handshake packets as the current FSW
         does not generate handshake packets.
         """
+        queued_packets = []
         try:
             while self.running:
                 packets = self.ground.receive_all()
                 # send packets from gds
+                
                 for packet in [
                     packet
                     for packet in packets
                     if packet is not None and len(packet) > 0
                 ]:
-                    framed = self.framer.frame(packet)
-                    # Uplink handles synchronous retries
-                    for retry in range(Uplinker.RETRY_COUNT):
-                        if self.adapter.write(framed):
-                            self.loopback.add_loopback_frame(
-                                Uplinker.get_handshake(packet)
-                            )
-                            break
-                    else:
-                        UP_LOGGER.warning(
-                            "Uplink failed to send %d bytes of data after %d retries",
-                            len(framed),
-                            Uplinker.RETRY_COUNT,
+                    queued_packets.append(packet)
+                    
+                    
+                """ for packet in [
+                    packet
+                    for packet in packets
+                    if packet is not None and len(packet) > 0
+                ]: """
+                if not  get_unacked_full():
+                    for packet in list(queued_packets):
+                        framed = self.framer.frame(packet)
+                        # Uplink handles synchronous retries
+                        for retry in range(Uplinker.RETRY_COUNT):
+                            if self.adapter.write(framed):
+                                self.loopback.add_loopback_frame(
+                                    Uplinker.get_handshake(packet)
+                                )
+                                queued_packets.remove(packet)
+                                break
+                        else:
+                            UP_LOGGER.warning(
+                                "Uplink failed to send %d bytes of data after %d retries",
+                                len(framed),
+                                Uplinker.RETRY_COUNT,
                         )
                 # send acks
                 if acks is not None and len(acks) > 0:
