@@ -24,7 +24,7 @@ Vue.component("uplink", {
             "upfiles": _datastore.upfiles, 
             "flags": _datastore.flags,
             "selected": [], 
-            "destination": "/", 
+            "destination": "", 
             "error": null
         }
     },

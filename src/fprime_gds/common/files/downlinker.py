@@ -84,17 +84,33 @@ class FileDownlinker(fprime_gds.common.handlers.DataHandler):
         size = data.size
         source_path = data.sourcePath.decode(fprime.constants.DATA_ENCODING)
         dest_path = data.destPath.decode(fprime.constants.DATA_ENCODING)
+
         if self.state != FileStates.IDLE:
-            LOGGER.warning("File transfer already inprogress. Aborting original.")
+            LOGGER.warning("File transfer already in progress. Aborting original.")
             self.finish()
+
+        # Determine the full destination path
+        full_dest_path = os.path.join(self.__directory, self.sanitize(dest_path))
+
+        # Check if the destination file already exists and delete it if it does
+        if os.path.exists(full_dest_path):
+            try:
+                os.remove(full_dest_path)
+                LOGGER.info("Existing destination file %s has been deleted.", full_dest_path)
+            except Exception as exc:
+                LOGGER.error("Failed to delete existing file %s: %s", full_dest_path, str(exc))
+                self.state = FileStates.ERROR
+                return
+
         # Create the destination file where the DATA packet data will be stored
         assert self.active is None, "File is already open, something went wrong"
         self.active = TransmitFile(
             source_path,
-            os.path.join(self.__directory, self.sanitize(dest_path)),
+            full_dest_path,
             size,
             self.__log_dir,
         )
+
         try:
             self.active.open(TransmitFileState.WRITE)
         except PermissionError as exc:
@@ -104,6 +120,7 @@ class FileDownlinker(fprime_gds.common.handlers.DataHandler):
                 + str(exc)
             )
             return
+
         LOGGER.addHandler(self.active.log_handler)
         message = "Received START packet with metadata:\n"
         message += "\tSize: %d\n"
@@ -113,6 +130,7 @@ class FileDownlinker(fprime_gds.common.handlers.DataHandler):
         self.files.append(self.active)
         self.state = FileStates.RUNNING
         self.sequence += 1
+
 
     def handle_data(self, data):
         """
