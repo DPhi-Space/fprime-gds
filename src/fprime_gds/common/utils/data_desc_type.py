@@ -23,9 +23,11 @@ DataDescType = Enum(
         # Handshake packet
         "FW_PACKET_HAND": 0xFE,
         # Ret Packet OK
-        "FW_PACKET_RET_OK": 0xAC,
+        "FW_PACKET_ACK": 0xAC,
+        # Ret Packet OK
+        "FW_PACKET_RET_OK": 0xAD,
         # Ret Packet ERR
-        "FW_PACKET_RET_ERR": 0xAD,
+        "FW_PACKET_RET_ERR": 0xAE,
         # Unknown packet
         "FW_PACKET_UNKNOWN": 0xFF,
     },
