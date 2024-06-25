@@ -74,6 +74,7 @@ class CmdEncoder(encoder.Encoder):
         self.len_obj = self.config.get_type("msg_len")
         self.desc_obj = self.config.get_type("msg_desc")
         self.opcode_obj = self.config.get_type("op_code")
+        self.cmdSeqID = 0
 
     def encode_api(self, data):
         """
@@ -93,9 +94,14 @@ class CmdEncoder(encoder.Encoder):
         self.desc_obj.val = DataDescType["FW_PACKET_COMMAND"].value
         descriptor = self.desc_obj.serialize()
 
-        self.opcode_obj.val = cmd_temp.get_op_code()
+        self.opcode_obj.val =  ((self.cmdSeqID << 16) & 0xFFFF0000) | (cmd_temp.get_op_code() & 0x0000FFFF)
         op_code = self.opcode_obj.serialize()
-
+        
+        if self.cmdSeqID >= 0xFFFF:
+            self.cmdSeqID = 0
+        else:
+            self.cmdSeqID += 1 
+            
         arg_data = b""
         for arg in data.get_args():
             arg_data += arg.serialize()
