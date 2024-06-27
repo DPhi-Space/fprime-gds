@@ -72,7 +72,7 @@ class FramerDeframer(abc.ABC):
             discarded_aggregate += discarded
             
             if packet is None and ack is None:
-                return packets, data, discarded_aggregate, acks, ret
+                return packets, data, discarded_aggregate, acks, rets
             acks.append(ack)
             packets.append(packet)
             rets.append(ret)
