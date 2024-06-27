@@ -62,18 +62,20 @@ class FramerDeframer(abc.ABC):
         """
         packets = []
         acks = []
+        rets = []
         if not no_copy:
             data = copy.copy(data)
         discarded_aggregate = b""
         while True:
             # Deframe and return only on None
-            (packet, data, discarded, ack) = self.deframe(data, no_copy=True)
+            (packet, data, discarded, ack, ret) = self.deframe(data, no_copy=True)
             discarded_aggregate += discarded
             
             if packet is None and ack is None:
-                return packets, data, discarded_aggregate, acks
+                return packets, data, discarded_aggregate, acks, ret
             acks.append(ack)
             packets.append(packet)
+            rets.append(ret)
 
     @classmethod
     @gds_plugin_specification
