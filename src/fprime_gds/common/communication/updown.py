@@ -270,7 +270,8 @@ class Uplinker:
                 # send rets
                 if rets is not None and len(rets) > 0:
                     for ret in rets:
-                        print(f'[Uplinker] Uplinking RET {ret}')
+                        #print(f'[Uplinker] Uplinking RET {ret}')
+                        print(f"[Uplinker] Uplinking RET: {''.join(f'{x:02x}' for x in ret)}")
                         for retry in range(Uplinker.RETRY_COUNT):
                             if self.adapter.write(ret):
                                 self.loopback.add_loopback_frame(
@@ -289,7 +290,8 @@ class Uplinker:
                 resends = resend_unacked()
                 if resends is not None and len(resends) > 0:
                     for resend in resends:
-                        print(f'[Uplinker] Resending Packet {resend}')
+                        #print(f'[Uplinker] Resending Packet {resend}')
+                        print(f"[Uplinker] Resending Packet: {''.join(f'{x:02x}' for x in resend)}")
                         for retry in range(Uplinker.RETRY_COUNT):
                             if self.adapter.write(resend):
                                 self.loopback.add_loopback_frame(
