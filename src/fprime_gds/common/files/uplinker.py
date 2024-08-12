@@ -147,7 +147,7 @@ class FileUplinker(fprime_gds.common.handlers.DataHandler):
     packets that are send back on each packet.
     """
 
-    CHUNK_SIZE = 255
+    CHUNK_SIZE = 220
 
     def __init__(self, file_encoder, chunk=CHUNK_SIZE, timeout=20):
         """
