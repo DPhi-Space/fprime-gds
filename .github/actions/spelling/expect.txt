@@ -142,6 +142,7 @@ fprime
 fptable
 fpy
 fpybc
+fqn
 fsw
 gdiplus
 getbootstrap
@@ -192,6 +193,7 @@ jsonify
 keepalive
 keyify
 kinda
+leisher
 lestarch
 levelname
 Lezer
@@ -247,6 +249,7 @@ outputfile
 packetized
 Paetz
 PARAMDOC
+paramdb
 passthrough
 pb
 pdflatex
@@ -257,6 +260,7 @@ plantuml
 PNGs
 preds
 prm
+prmdb
 procs
 PROGRAMLISTING
 projectbrief
@@ -314,6 +318,7 @@ sss
 Ssymbols
 stackoverflow
 startuml
+subcmd
 subgrouping
 subhist
 subhistory
@@ -388,3 +393,4 @@ xmit
 xy
 zeromq
 zmq
+zimri
