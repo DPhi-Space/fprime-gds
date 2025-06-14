@@ -3,6 +3,7 @@ DataDescType:
 
 Defines an enumeration that represents each type of data packet that can be downlinked.
 """
+
 from enum import Enum
 
 
@@ -25,6 +26,7 @@ DataDescType = Enum(
         "FW_PACKET_IDLE": 5,
         # Handshake packet
         "FW_PACKET_HAND": 0xFE,
+        "FW_PACKET_ACK": 0xAC,
         # Unknown packet
         "FW_PACKET_UNKNOWN": 0xFF,
         # Space Packet Idle APID

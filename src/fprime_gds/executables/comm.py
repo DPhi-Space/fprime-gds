@@ -27,7 +27,7 @@ import fprime_gds.common.communication.adapters.ip
 import fprime_gds.common.communication.ground
 import fprime_gds.common.logger
 import fprime_gds.executables.cli
-from fprime_gds.common.communication.updown import Downlinker, Uplinker
+from fprime_gds.common.communication.updown import CgDownlinker, CgUplinker
 from fprime_gds.common.zmq_transport import ZmqGround
 from fprime_gds.plugin.system import Plugins
 
@@ -100,10 +100,10 @@ def main():
                     "Failed to open %s. Unframed data will be discarded.",
                     discarded_file_handle_path,
                 )
-        downlinker = Downlinker(
+        downlinker = CgDownlinker(
             adapter, ground, framer_instance, discarded=discarded_file_handle
         )
-        uplinker = Uplinker(adapter, ground, framer_instance, downlinker)
+        uplinker = CgUplinker(adapter, ground, framer_instance, downlinker)
 
         # Open resources for the handlers on either side, this prepares the resources needed for reading/writing data
         ground.open()

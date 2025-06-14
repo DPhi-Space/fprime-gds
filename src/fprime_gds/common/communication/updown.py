@@ -1,4 +1,4 @@
-""" Uplink and Downlink handling for communications layer
+"""Uplink and Downlink handling for communications layer
 
 Downlink needs to happen in several stages. First, raw data is read from the adapter. This data is collected in a pool
 and the pool is passed to a deframer that extracts frames from this pool. Frames are queued and sent to the ground
@@ -9,6 +9,8 @@ Uplink is the reverse, it pulls data in from the ground handler, frames it, and 
 is represented by a single thread, as it is not dealing with multiple streams of data that need to be multiplexed.
 
 """
+
+import time
 import logging
 import threading
 from queue import Empty, Full, Queue
@@ -22,6 +24,26 @@ from fprime_gds.common.utils.data_desc_type import DataDescType
 
 DW_LOGGER = logging.getLogger("downlink")
 UP_LOGGER = logging.getLogger("uplink")
+
+UNACKED_RESEND_TIMEOUT = 20  # seconds
+UNACKED_MAX_PKTS = 20
+
+acks = []
+rets = []
+
+
+def resend_unacked():
+    from protocol import get_unacked_pkts
+
+    resend_unacked_list = []
+
+    unacked_pkts = get_unacked_pkts()
+    for unacked in unacked_pkts:
+        if time.time() >= unacked["time_sent"] + UNACKED_RESEND_TIMEOUT:
+            resend_unacked_list.append(unacked["data"])
+            unacked["time_sent"] += UNACKED_RESEND_TIMEOUT
+
+    return resend_unacked_list
 
 
 class Downlinker:
@@ -247,3 +269,149 @@ class Uplinker:
             handshake packet
         """
         return U32Type(DataDescType["FW_PACKET_HAND"].value).serialize() + packet
+
+
+class CgDownlinker(Downlinker):
+    def deframing(self):
+        global acks, rets
+        """Deframing stage of downlink
+
+        Reads in data from the raw adapter and runs the deframing. Collects data in a pool and continually runs
+        deframing against it where possible. Then appends new frames into the outgoing queue.
+        """
+        pool = b""
+        while self.running:
+            # Blocks until data is available, but may still return b"" if timeout
+            pool += self.adapter.read()
+            frames, pool, discarded_data, new_acks, new_rets = (
+                self.deframer.deframe_all(pool, no_copy=True)
+            )
+            if new_acks:
+                for ack in new_acks:
+                    if ack is not None:
+                        acks.append(ack)
+            if new_rets:
+                for ret in new_rets:
+                    if ret is not None:
+                        rets.append(ret)
+
+            try:
+                for frame in frames:
+                    self.outgoing.put_nowait(frame)
+            except Full:
+                DW_LOGGER.warning("GDS ground queue full, dropping frame")
+            try:
+                if self.discarded is not None:
+                    self.discarded.write(discarded_data)
+                    self.discarded.flush()
+            # Failure to write discarded data should never stop the GDS. Log it and move on.
+            except Exception as exc:
+                DW_LOGGER.warning("Cannot write discarded data %s", exc)
+                self.discarded = None  # Give up on logging further data
+
+
+class CgUplinker(Uplinker):
+    def uplink(self):
+        from protocol import get_unacked_full
+
+        global acks, rets
+        queued_packets = []
+        try:
+            while self.running:
+                packets = self.ground.receive_all()
+                # send packets from gds
+
+                for packet in [
+                    packet
+                    for packet in packets
+                    if packet is not None and len(packet) > 0
+                ]:
+                    queued_packets.append(packet)
+
+                """ for packet in [
+                    packet
+                    for packet in packets
+                    if packet is not None and len(packet) > 0
+                ]: """
+                if not get_unacked_full():
+                    for packet in list(queued_packets):
+                        framed = self.framer.frame(packet)
+                        # Uplink handles synchronous retries
+                        for retry in range(Uplinker.RETRY_COUNT):
+                            if self.adapter.write(framed):
+                                self.loopback.add_loopback_frame(
+                                    Uplinker.get_handshake(packet)
+                                )
+                                queued_packets.remove(packet)
+                                break
+                        else:
+                            UP_LOGGER.warning(
+                                "Uplink failed to send %d bytes of data after %d retries",
+                                len(framed),
+                                Uplinker.RETRY_COUNT,
+                            )
+                # send acks
+                if acks is not None and len(acks) > 0:
+                    for ack in acks:
+                        print(f"[Uplinker] Uplinking ACK {ack}")
+                        for retry in range(Uplinker.RETRY_COUNT):
+                            if self.adapter.write(ack):
+                                self.loopback.add_loopback_frame(
+                                    Uplinker.get_handshake(ack)
+                                )
+                                break
+                        else:
+                            UP_LOGGER.warning(
+                                "Uplink failed to send %d bytes of data after %d retries",
+                                len(ack),
+                                Uplinker.RETRY_COUNT,
+                            )
+                    acks = []
+
+                # send rets
+                if rets is not None and len(rets) > 0:
+                    for ret in rets:
+                        # print(f'[Uplinker] Uplinking RET {ret}')
+                        print(
+                            f"[Uplinker] Uplinking RET: {''.join(f'{x:02x}' for x in ret)}"
+                        )
+                        for retry in range(Uplinker.RETRY_COUNT):
+                            if self.adapter.write(ret):
+                                self.loopback.add_loopback_frame(
+                                    Uplinker.get_handshake(ret)
+                                )
+                                break
+                        else:
+                            UP_LOGGER.warning(
+                                "Uplink failed to send %d bytes of data after %d retries",
+                                len(ret),
+                                Uplinker.RETRY_COUNT,
+                            )
+                    rets = []
+
+                # resend packets
+                resends = resend_unacked()
+                if resends is not None and len(resends) > 0:
+                    for resend in resends:
+                        # print(f'[Uplinker] Resending Packet {resend}')
+                        print(
+                            f"[Uplinker] Resending Packet: {''.join(f'{x:02x}' for x in resend)}"
+                        )
+                        for retry in range(Uplinker.RETRY_COUNT):
+                            if self.adapter.write(resend):
+                                self.loopback.add_loopback_frame(
+                                    Uplinker.get_handshake(resend)
+                                )
+                                break
+                        else:
+                            UP_LOGGER.warning(
+                                "Uplink failed to send %d bytes of data after %d retries",
+                                len(resend),
+                                Uplinker.RETRY_COUNT,
+                            )
+
+        # An OSError might occur during shutdown and is harmless. If we are not shutting down, this error should be
+        # propagated up the stack.
+        except OSError:
+            if self.running:
+                raise
