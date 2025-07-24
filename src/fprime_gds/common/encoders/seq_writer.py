@@ -28,9 +28,9 @@ class SeqBinaryWriter:
 
         self.__fd = None
         self.__timebase = timebase
-        self.desc_obj = U16Type
-        self.opcode_obj = U16Type
-        self.len_obj = U16Type
+        self.desc_obj = U16Type()
+        self.opcode_obj = U16Type()
+        self.len_obj = U16Type()
 
     def open(self, filename):
         """
