@@ -28,9 +28,9 @@ class SeqBinaryWriter:
 
         self.__fd = None
         self.__timebase = timebase
-        self.desc_obj = config.get_type("FwPacketDescriptorType")
-        self.opcode_obj = config.get_type("FwOpcodeType")
-        self.len_obj = config.get_type("msg_len")
+        self.desc_obj = U16Type
+        self.opcode_obj = U16Type
+        self.len_obj = U16Type
 
     def open(self, filename):
         """
@@ -54,8 +54,7 @@ class SeqBinaryWriter:
             # TKC - new command time format
             time = cmd_obj.get_time()
             return (
-                U32Type(time.seconds).serialize()
-                + U32Type(time.useconds ).serialize()
+                U32Type(time.seconds).serialize() + U32Type(time.useconds).serialize()
             )
 
         def __descriptor(cmd_obj):
