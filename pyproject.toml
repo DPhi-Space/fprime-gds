@@ -43,6 +43,7 @@ dependencies = [
     "openpyxl>=3.0.10",
     "pyserial>=3.5",
     "pydantic>=2.6",
+    "lark>=1.2.2",
     "PyYAML>=6.0.2",
     "spacepackets>=0.30.0",
     "crc>=7.0.0"
@@ -65,7 +66,7 @@ fprime-seqgen = "fprime_gds.common.tools.seqgen:main"
 fprime-dp-write = "fprime_gds.executables.data_product_writer:main"
 fprime-gds = "fprime_gds.executables.run_deployment:main"
 fprime-prm-write = "fprime_gds.common.tools.params:main"
-fprime-fpy-bytecode = "fprime_gds.common.fpy.serialize_bytecode:main"
+fprime-fpyc = "fprime_gds.common.fpy.main:main"
 
 # For Pytest fixtures
 [project.entry-points."pytest11"]
