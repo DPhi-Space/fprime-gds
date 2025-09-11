@@ -61,7 +61,7 @@ class StandardPipeline:
         dictionaries,
         file_store,
         logging_prefix=None,
-        data_logging_enabled=True
+        data_logging_enabled=True,
     ):
         """
         Setup the standard pipeline for moving data from the middleware layer through the GDS layers using the standard

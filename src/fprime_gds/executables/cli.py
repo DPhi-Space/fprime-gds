@@ -318,7 +318,6 @@ class ConfigDrivenParser(ParserBase):
 
     DEFAULT_CONFIGURATION_PATH = Path("fprime-gds.yml")
 
-
     @classmethod
     def set_default_configuration(cls, path: Path):
         """Set path for (global) default configuration file
@@ -417,7 +416,7 @@ class ConfigDrivenParser(ParserBase):
                     relative_base = args.config.parent.absolute()
 
                     def path_constructor(loader, node):
-                        """ Processes !PATH annotations as relative to current file """
+                        """Processes !PATH annotations as relative to current file"""
                         calculated_path = relative_base / loader.construct_scalar(node)
                         return calculated_path
 
@@ -1028,7 +1027,7 @@ class DictionaryParser(DetectionParser):
         elif args.dictionary is None:
             args = super().handle_arguments(args, **kwargs)
             args.dictionary = find_dict(args.deployment)
-        
+
         # Setup dictionaries encoders and decoders
         dictionaries = Dictionaries()
 
@@ -1108,7 +1107,7 @@ class StandardPipelineParser(CompositeParser):
             "dictionaries": args_ns.dictionaries,
             "file_store": args_ns.files_storage_directory,
             "logging_prefix": args_ns.logs,
-            "data_logging_enabled": not args_ns.disable_data_logging
+            "data_logging_enabled": not args_ns.disable_data_logging,
         }
         pipeline = pipeline if pipeline else StandardPipeline()
         pipeline.transport_implementation = args_ns.connection_transport
@@ -1131,6 +1130,7 @@ class CommParser(CompositeParser):
         CommExtraParser,
         MiddleWareParser,
         LogDeployParser,
+        DictionaryParser,  # needed to get types from dictionary for framing
     ]
 
     def __init__(self):

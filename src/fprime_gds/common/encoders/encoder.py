@@ -20,6 +20,7 @@ purpose is to define the interface for an encoder.
 
 @bug No known bugs
 """
+
 import abc
 import logging
 
