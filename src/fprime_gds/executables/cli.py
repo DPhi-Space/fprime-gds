@@ -27,9 +27,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 # Required to set the checksum as a module variable
-import fprime_gds.common.communication.checksum
 import fprime_gds.common.logger
 from fprime_gds.common.communication.adapters.ip import check_port
+from fprime_gds.common.models.dictionaries import Dictionaries
 from fprime_gds.common.pipeline.standard import StandardPipeline
 from fprime_gds.common.transport import ThreadedTCPSocketClient
 from fprime_gds.common.utils.config_manager import ConfigManager
@@ -176,6 +176,18 @@ class ParserBase(ABC):
         ]
         return list(itertools.chain.from_iterable(cli_pairs))
 
+    def handle_values(self, values: Dict[str, Any]):
+        """Post-process the parser's arguments in dictionary form
+
+        Handle arguments from the given parser in dictionary form. This will convert to/from the namespace and then
+        delegate to handle_arguments.
+
+        Args:
+            args: arguments namespace of processed arguments
+        Returns: dictionary with processed results of arguments.
+        """
+        return vars(self.handle_arguments(args=argparse.Namespace(**values), kwargs={}))
+
     @abstractmethod
     def handle_arguments(self, args, **kwargs):
         """Post-process the parser's arguments
@@ -209,7 +221,9 @@ class ParserBase(ABC):
             arguments: arguments to process, None to use command line input
         Returns: namespace with all parsed arguments from all provided ParserBase subclasses
         """
-        return cls._parse_args(parser_classes, description, arguments, use_parse_known=True, **kwargs)
+        return cls._parse_args(
+            parser_classes, description, arguments, use_parse_known=True, **kwargs
+        )
 
     @classmethod
     def parse_args(
@@ -233,7 +247,6 @@ class ParserBase(ABC):
         Returns: namespace with all parsed arguments from all provided ParserBase subclasses
         """
         return cls._parse_args(parser_classes, description, arguments, **kwargs)
-
 
     @staticmethod
     def _parse_args(
@@ -297,16 +310,17 @@ class ParserBase(ABC):
 
 
 class ConfigDrivenParser(ParserBase):
-    """ Parser that allows options from configuration and command line
+    """Parser that allows options from configuration and command line
 
     This parser reads a configuration file (if supplied) and uses the values to drive the inputs to arguments. Command
     line arguments will still take precedence over the configured values.
     """
+
     DEFAULT_CONFIGURATION_PATH = Path("fprime-gds.yml")
 
     @classmethod
     def set_default_configuration(cls, path: Path):
-        """ Set path for (global) default configuration file
+        """Set path for (global) default configuration file
 
         Set the path for default configuration file. If unset, will use 'fprime-gds.yml'. Set to None to disable default
         configuration.
@@ -321,7 +335,7 @@ class ConfigDrivenParser(ParserBase):
         arguments=None,
         **kwargs,
     ):
-        """ Parse and post-process arguments using inputs and config
+        """Parse and post-process arguments using inputs and config
 
         Parse the arguments in two stages: first parse the configuration data, ignoring unknown inputs, then parse the
         full argument set with the supplied configuration to fill in additional options.
@@ -343,23 +357,29 @@ class ConfigDrivenParser(ParserBase):
 
         # Custom flow involving parsing the arguments of this parser first, then passing the configured values
         # as part of the argument source
-        ns_config, _, remaining = ParserBase.parse_known_args([ConfigDrivenParser], description, arguments, **kwargs)
+        ns_config, _, remaining = ParserBase.parse_known_args(
+            [ConfigDrivenParser], description, arguments, **kwargs
+        )
         config_options = ns_config.config_values.get("command-line-options", {})
         config_args = cls.flatten_options(config_options)
         # Argparse allows repeated (overridden) arguments, thus the CLI override is accomplished by providing
         # remaining arguments after the configured ones
-        ns_full, parser = ParserBase.parse_args(parser_classes, description, config_args + remaining, **kwargs)
-        ns_final =  argparse.Namespace(**vars(ns_config), **vars(ns_full))
+        ns_full, parser = ParserBase.parse_args(
+            parser_classes, description, config_args + remaining, **kwargs
+        )
+        ns_final = argparse.Namespace(**vars(ns_config), **vars(ns_full))
         return ns_final, parser
 
     @staticmethod
     def flatten_options(configured_options):
-        """ Flatten options down to arguments """
+        """Flatten options down to arguments"""
         flattened = []
         for option, value in configured_options.items():
             flattened.append(f"--{option}")
             if value is not None:
-                flattened.extend(value if isinstance(value, (list, tuple)) else [f"{value}"])
+                flattened.extend(
+                    value if isinstance(value, (list, tuple)) else [f"{value}"]
+                )
         return flattened
 
     def get_arguments(self) -> Dict[Tuple[str, ...], Dict[str, Any]]:
@@ -370,29 +390,43 @@ class ConfigDrivenParser(ParserBase):
                 "required": False,
                 "default": self.DEFAULT_CONFIGURATION_PATH,
                 "type": Path,
-                "help": f"Argument configuration file path.",
+                "help": "Argument configuration file path. [default: %(default)s]",
             }
         }
 
     def handle_arguments(self, args, **kwargs):
-        """ Handle the arguments
+        """Handle the arguments
 
         Loads the configuration file specified and fills in the `config_values` attribute of the namespace with the
         loaded configuration dictionary.
         """
         args.config_values = {}
         # Specified but non-existent config file is a hard error
-        if ("-c" in sys.argv[1:] or "--config" in sys.argv[1:]) and not args.config.exists():
-            raise ValueError(f"Specified configuration file '{args.config}' does not exist")
+        if (
+            "-c" in sys.argv[1:] or "--config" in sys.argv[1:]
+        ) and not args.config.exists():
+            raise ValueError(
+                f"Specified configuration file '{args.config}' does not exist"
+            )
         # Read configuration if the file was set and exists
-        if args.config is not None  and args.config.exists():
+        if args.config is not None and args.config.exists():
             print(f"[INFO] Reading command-line configuration from: {args.config}")
             with open(args.config, "r") as file_handle:
                 try:
+                    relative_base = args.config.parent.absolute()
+
+                    def path_constructor(loader, node):
+                        """Processes !PATH annotations as relative to current file"""
+                        calculated_path = relative_base / loader.construct_scalar(node)
+                        return calculated_path
+
+                    yaml.SafeLoader.add_constructor("!PATH", path_constructor)
                     loaded = yaml.safe_load(file_handle)
                     args.config_values = loaded if loaded is not None else {}
                 except Exception as exc:
-                    raise ValueError(f"Malformed configuration {args.config}: {exc}", exc)
+                    raise ValueError(
+                        f"Malformed configuration {args.config}: {exc}", exc
+                    )
         return args
 
 
@@ -576,8 +610,9 @@ class PluginArgumentParser(ParserBase):
     """Parser for arguments coming from plugins"""
 
     DESCRIPTION = "Plugin options"
+    # Defaults:
     FPRIME_CHOICES = {
-        "framing": "fprime",
+        "framing": "space-packet-space-data-link",
         "communication": "ip",
     }
 
@@ -829,6 +864,18 @@ class LogDeployParser(ParserBase):
                 "default": False,
                 "help": "Log to standard out along with log output files",
             },
+            ("--log-level-gds",): {
+                "action": "store",
+                "dest": "log_level_gds",
+                "choices": ["DEBUG", "INFO", "WARNING", "ERROR"],
+                "default": "INFO",
+                "help": "Set the logging level of GDS processes [default: %(default)s]",
+            },
+            ("--disable-data-logging",): {
+                "action": "store_true",
+                "default": False,
+                "help": "Disable logging of each data item",
+            },
         }
 
     def handle_arguments(self, args, **kwargs):
@@ -856,7 +903,7 @@ class LogDeployParser(ParserBase):
                 raise
         # Setup the basic python logging
         fprime_gds.common.logger.configure_py_log(
-            args.logs, mirror_to_stdout=args.log_to_stdout
+            args.logs, mirror_to_stdout=args.log_to_stdout, log_level=args.log_level_gds
         )
         return args
 
@@ -980,6 +1027,19 @@ class DictionaryParser(DetectionParser):
         elif args.dictionary is None:
             args = super().handle_arguments(args, **kwargs)
             args.dictionary = find_dict(args.deployment)
+
+        # Setup dictionaries encoders and decoders
+        dictionaries = Dictionaries()
+
+        dictionaries.load_dictionaries(
+            args.dictionary, args.packet_spec, args.packet_set_name
+        )
+        config = ConfigManager.get_instance()
+        # Update config to use Fw types defined in the JSON dictionary
+        if dictionaries.fw_type_name:
+            for fw_type_name, fw_type in dictionaries.fw_type_name.items():
+                config.set("types", fw_type_name, fw_type)
+        args.dictionaries = dictionaries
         return args
 
 
@@ -1043,12 +1103,11 @@ class StandardPipelineParser(CompositeParser):
     def pipeline_factory(args_ns, pipeline=None) -> StandardPipeline:
         """A factory of the standard pipeline given the handled arguments"""
         pipeline_arguments = {
-            "config": ConfigManager(),
-            "dictionary": args_ns.dictionary,
+            "config": ConfigManager.get_instance(),
+            "dictionaries": args_ns.dictionaries,
             "file_store": args_ns.files_storage_directory,
-            "packet_spec": args_ns.packet_spec,
-            "packet_set_name": args_ns.packet_set_name,
             "logging_prefix": args_ns.logs,
+            "data_logging_enabled": not args_ns.disable_data_logging,
         }
         pipeline = pipeline if pipeline else StandardPipeline()
         pipeline.transport_implementation = args_ns.connection_transport
@@ -1071,6 +1130,7 @@ class CommParser(CompositeParser):
         CommExtraParser,
         MiddleWareParser,
         LogDeployParser,
+        DictionaryParser,  # needed to get types from dictionary for framing
     ]
 
     def __init__(self):

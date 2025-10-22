@@ -22,6 +22,8 @@ from fprime_gds.common.decoders import decoder
 from fprime_gds.common.decoders.decoder import DecodingException
 from fprime_gds.common.utils import config_manager
 
+import logging
+LOGGER = logging.getLogger("event_decoder")
 
 class EventDecoder(decoder.Decoder):
     """Decoder class for event data"""
@@ -41,7 +43,7 @@ class EventDecoder(decoder.Decoder):
 
         if config is None:
             # Retrieve defaults for the configs
-            config = config_manager.ConfigManager().get_instance()
+            config = config_manager.ConfigManager.get_instance()
 
         self.__dict = event_dict
         self.id_obj = config.get_type("FwEventIdType")
@@ -67,7 +69,11 @@ class EventDecoder(decoder.Decoder):
         while (ptr < len(data)):
 
             # Decode event ID here...
-            self.id_obj.deserialize(data, ptr)
+            if ptr + self.id_obj.getSize() <= len(data):
+                self.id_obj.deserialize(data, ptr)
+            else:
+                LOGGER.warning("Insufficient data for event ID")
+                break
             ptr += self.id_obj.getSize()
             event_id = self.id_obj.val
 

@@ -12,17 +12,19 @@ import signal
 import subprocess
 import sys
 import time
+from typing import Dict, Tuple
 
 import pytest
 
 from pathlib import Path
-from tempfile import NamedTemporaryFile
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 from fprime_gds.common.communication.adapters.ip import IpAdapter
 from fprime_gds.common.communication.adapters.base import NoneAdapter
 from fprime_gds.common.communication.adapters.uart import SerialAdapter
 from fprime_gds.common.communication.framing import FramerDeframer, FpFramerDeframer
+from fprime_gds.common.pipeline.standard import StandardPipeline
 from fprime_gds.executables.cli import ParserBase, PluginArgumentParser
-from fprime_gds.executables.apps import GdsFunction, GdsApp
+from fprime_gds.executables.apps import GdsFunction, GdsApp, GdsStandardApp
 from fprime_gds.plugin.definitions import gds_plugin_implementation, gds_plugin
 from fprime_gds.plugin.system import Plugins
 
@@ -127,7 +129,7 @@ class StartFunction(GdsFunction):
         """Start-Up function file annotation"""
         self.start_up_function_file = start_up_file
 
-    def run(self):
+    def run(self, parsed_args):
         """Run function"""
         with open(self.start_up_function_file, "a+") as file_handle:
             file_handle.write("ACK\n")
@@ -161,12 +163,12 @@ class StartApp(GdsApp):
     This plugin implementation creates a start-up application that will run in a separate process
     """
 
-    def __init__(self, start_up_file):
+    def __init__(self, namespace, start_up_file):
         """Start-Up function file annotation"""
         super().__init__()
         self.start_up_app_file = start_up_file
 
-    def get_process_invocation(self):
+    def get_process_invocation(self, parsed_args):
         """Process invocation"""
         return [sys.executable, __file__, self.start_up_app_file, "ACK-2"]
 
@@ -193,6 +195,64 @@ class StartApp(GdsApp):
         return cls
 
 
+@gds_plugin(GdsStandardApp)
+class StandardAppTester(GdsStandardApp):
+    """A test plugin that uses the standard app functionality"""
+
+    INIT_CALLED = False
+
+    def __init__(
+        self, test_arg, test_arg_with_default, start_up_file, **pipeline_arguments
+    ):
+        """Initialize the standard app tester"""
+        super().__init__(**pipeline_arguments)
+        self.test_arg = test_arg
+        self.test_arg_with_default = test_arg_with_default
+        self.start_up_file = start_up_file
+
+    @classmethod
+    def get_additional_arguments(cls) -> Dict[Tuple, Dict[str, str]]:
+        """Function to provide additional command line arguments beyond the standard pipeline
+
+        Override this function to provide additional arguments. The form of the arguments are the same as returned by
+        standard plugins: a dictionary of tuple flags to argparse kwargs inputs.
+
+        Return:
+            dictionary of flag tuple to argparse kwargs
+        """
+        return {
+            ("--test-arg",): {"type": str, "help": "Test argument", "required": True},
+            ("--test-arg-with-default",): {
+                "type": str,
+                "help": "Test argument with default",
+                "default": "test-default",
+            },
+            ("--start-up-file",): {
+                "type": str,
+                "help": "File to run start-up function on",
+                "required": True,
+            },
+        }
+
+    @classmethod
+    def init(cls):
+        """Allows standard application plugins to initialize before argument parsing is performed"""
+        cls.INIT_CALLED = True
+
+    def start(self, pipeline: StandardPipeline):
+        """Start function to contain behavior based in standard pipeline"""
+        with open(self.start_up_file, "a+") as file_handle:
+            if self.INIT_CALLED:
+                print("[TestStandardApp] init called", file=file_handle)
+            print("[TestStandardApp] start called", file=file_handle)
+            print("[TestStandardApp] test-arg", self.test_arg, file=file_handle)
+            print(
+                "[TestStandardApp] test-arg-with-default",
+                self.test_arg_with_default,
+                file=file_handle,
+            )
+
+
 @pytest.fixture()
 def plugins():
     """Register test plugins as fixture for testing
@@ -215,31 +275,34 @@ def start_up(request):
     parent_path = Path(__file__).parent
     extra_plugins, flags = request.param
 
-    command_arguments = [
-        "fprime-gds",
-        "-n",
-        "--dictionary",
-        str(parent_path / "sample" / "dictionary.xml"),
-        "--zmq-transport",
-        "ipc:///tmp/fprime-test-in",
-        "ipc:///tmp/fprime-test-out",
-        "-g",
-        "none",
-    ] + flags
-
     # Update the environment to side-load python
     environment = os.environ.copy()
     environment[Plugins.PLUGIN_ENVIRONMENT_VARIABLE] = extra_plugins
     environment["PYTHONPATH"] = f"{environment.get('PYTHONPATH', '')}:{parent_path}"
-    with NamedTemporaryFile(mode="w+") as temp_file:
-        assert "" == temp_file.read(), "Failed to read empty file"
-        command_arguments += ["--start-up-file", temp_file.name]
-        # Run subprocess for 3 seconds then kill the GDS with 5 seconds to shut down
-        process = subprocess.Popen(command_arguments, env=environment)
-        time.sleep(3)
-        process.send_signal(signal.SIGINT)
-        _ = process.communicate(None, 5)
-        yield temp_file
+    with TemporaryDirectory() as temp_dir:
+        # Command line arguments including a temporary directory for the ZMQ transport
+        # sockets used in this test.
+        command_arguments = [
+            "fprime-gds",
+            "-n",
+            "--dictionary",
+            str(parent_path / "sample" / "dictionary.xml"),
+            "--zmq-transport",
+            f"ipc://{temp_dir}/fprime-test-in",
+            f"ipc://{temp_dir}/fprime-test-out",
+            "-g",
+            "none",
+            "--disable-custom-data-handlers",
+        ] + flags
+        with NamedTemporaryFile(mode="w+", dir=temp_dir) as temp_file:
+            assert "" == temp_file.read(), "Failed to read empty file"
+            command_arguments += ["--start-up-file", temp_file.name]
+            # Run subprocess for 3 seconds then kill the GDS with 5 seconds to shut down
+            process = subprocess.Popen(command_arguments, env=environment)
+            time.sleep(3)
+            process.send_signal(signal.SIGINT)
+            _ = process.communicate(None, 5)
+            yield temp_file
 
 
 def test_base_plugin(plugins):
@@ -290,7 +353,7 @@ def test_plugin_validation(plugins):
 
 def test_plugin_arguments(plugins):
     """Tests that arguments can be parsed and supplied to a plugin"""
-    plugin_system = plugins 
+    plugin_system = plugins
     a_string = "a_string"
     a_number = "201"
     to_parse = [
@@ -338,11 +401,13 @@ def test_plugin_check_arguments(plugins):
 
 
 def test_plugin_decorator(plugins):
-    """ Test that the plugin decorator works with known good class """
+    """Test that the plugin decorator works with known good class"""
+
     @gds_plugin(FramerDeframer)
     class MyGood(FramerDeframer):
         def frame(self, data):
             pass
+
         def deframe(self, data, no_copy=False):
             pass
 
@@ -354,24 +419,29 @@ def test_plugin_decorator(plugins):
 
 
 def test_plugin_decorator_without_class():
-    """ Test that the plugin decorator fails if a class is not provided """
+    """Test that the plugin decorator fails if a class is not provided"""
     with pytest.raises(Exception):
+
         @gds_plugin
         class MyGood(Good):
             pass
 
+
 def test_plugin_decorator_class_mismatch():
-    """ Test that the plugin decorator fails if it is supplied the wrong plugin class """
+    """Test that the plugin decorator fails if it is supplied the wrong plugin class"""
     with pytest.raises(Exception):
+
         @gds_plugin(StartApp)
-        class MyGood(Good): # Good is a FramerDeframer
+        class MyGood(Good):  # Good is a FramerDeframer
             pass
 
+
 def test_plugin_decorator_not_a_plugin():
-    """ Test that the plugin decorator fails if it is supplied a class which is not a plugin """
+    """Test that the plugin decorator fails if it is supplied a class which is not a plugin"""
     with pytest.raises(Exception):
+
         @gds_plugin(object)
-        class MyGood(Good): # Good is a FramerDeframer
+        class MyGood(Good):  # Good is a FramerDeframer
             pass
 
 
@@ -388,7 +458,9 @@ def test_start_function(start_up):
 )
 def test_disabled_start_function(start_up):
     """Test disabled start-up functions"""
-    assert "" == start_up.read(), "Failed to read empty file: Function ran when disabled"
+    assert (
+        "" == start_up.read()
+    ), "Failed to read empty file: Function ran when disabled"
 
 
 @pytest.mark.parametrize("start_up", [(f"{__name__}:StartApp", [])], indirect=True)
@@ -405,8 +477,57 @@ def test_disabled_start_app(start_up):
     assert "" == start_up.read(), "Failed to read empty file"
 
 
+@pytest.mark.parametrize(
+    "start_up",
+    [(f"{__name__}:StandardAppTester", ["--test-arg", "test"])],
+    indirect=True,
+)
+def test_standard_app(start_up):
+    """Test standard app functionality"""
+    lines = [line.strip() for line in start_up.readlines()]
+    expected_lines = [
+        "[TestStandardApp] init called",
+        "[TestStandardApp] start called",
+        "[TestStandardApp] test-arg test",
+        "[TestStandardApp] test-arg-with-default test-default",
+    ]
+    assert expected_lines[0] in lines, "Plugin not initialized"
+    assert expected_lines[1] in lines, "Plugin not started"
+    assert expected_lines[2] in lines, "Test argument not passed"
+    assert expected_lines[3] in lines, "Test argument with default not passed"
+    assert expected_lines == lines, "Ordering of lines not correct"
+
+
+@pytest.mark.parametrize(
+    "start_up",
+    [
+        (
+            f"{__name__}:StandardAppTester",
+            ["--test-arg", "test", "--test-arg-with-default", "test-non-default"],
+        )
+    ],
+    indirect=True,
+)
+def test_standard_app_with_non_defaults(start_up):
+    """Test standard app functionality"""
+    lines = [line.strip() for line in start_up.readlines()]
+    expected_lines = [
+        "[TestStandardApp] init called",
+        "[TestStandardApp] start called",
+        "[TestStandardApp] test-arg test",
+        "[TestStandardApp] test-arg-with-default test-non-default",
+    ]
+    assert expected_lines[0] in lines, "Plugin not initialized"
+    assert expected_lines[1] in lines, "Plugin not started"
+    assert expected_lines[2] in lines, "Test argument not passed"
+    assert (
+        expected_lines[3] in lines
+    ), "Test argument with overridden default not passed"
+    assert expected_lines == lines, "Ordering of lines not correct"
+
+
 def main():
-    """Run main entry point function
+    """Run main entry point function for StartApp plugin
 
     The main function is run when the file is invoked not as a pytest set of test, but rather when it is run as part of
     the StartApp plugin. This main program writes the second argument to the file represented as the first.

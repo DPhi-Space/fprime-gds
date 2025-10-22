@@ -51,8 +51,6 @@ def main():
     Plugins.system(["communication", "framing"])
     args, _ = fprime_gds.executables.cli.ParserBase.parse_args(
         [
-            fprime_gds.executables.cli.LogDeployParser,
-            fprime_gds.executables.cli.MiddleWareParser,
             fprime_gds.executables.cli.CommParser,
             fprime_gds.executables.cli.PluginArgumentParser,
         ],

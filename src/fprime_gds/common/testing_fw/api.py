@@ -7,10 +7,12 @@ telemetry and dictionaries.
 
 :author: koran
 """
+
 import signal
 import time
 from pathlib import Path
 import shutil
+import json
 
 from fprime.common.models.serialize.time_type import TimeType
 
@@ -30,15 +32,17 @@ class IntegrationTestAPI(DataHandler):
 
     NOW = "NOW"
 
-    def __init__(self, pipeline, logpath=None, fsw_order=True):
+    def __init__(self, pipeline, deployment_config=None, logpath=None, fsw_order=True):
         """
         Initializes API: constructs and registers test histories.
         Args:
             pipeline: a pipeline object providing access to basic GDS functionality
+            deployment_config: path to deployment configuration file
             logpath: an optional output destination for the api test log
             fsw_order: a flag to determine whether the API histories will maintain FSW time order.
         """
         self.pipeline = pipeline
+        self.deployment_config = deployment_config
 
         # these are owned by the GDS and will not be modified by the test API.
         self.aggregate_command_history = pipeline.histories.commands
@@ -67,12 +71,13 @@ class IntegrationTestAPI(DataHandler):
 
         # Copy dictionaries and binary file to output directory
         if logpath is not None:
-            base_dir = Path(self.pipeline.dictionary_path).parents[1]
-            for subdir in ['bin', 'dict']:
+            base_dir = Path(self.dictionaries.dictionary_path).parents[1]
+            for subdir in ["bin", "dict"]:
                 dir_path = base_dir / subdir
                 if dir_path.is_dir():
-                    shutil.copytree(dir_path, Path(logpath) / subdir,
-                                    dirs_exist_ok=True)
+                    shutil.copytree(
+                        dir_path, Path(logpath) / subdir, dirs_exist_ok=True
+                    )
 
         # A predicate used as a filter to choose which events to log automatically
         self.event_log_filter = self.get_event_pred()
@@ -80,8 +85,15 @@ class IntegrationTestAPI(DataHandler):
         # Used by the data_callback method to detect if events have been received out of order.
         self.last_evr = None
 
+    @property
+    def dictionaries(self):
+        """ Return the dictionaries """
+        # Pipeline should not be exposed to the user, but it stores the dictionary
+        # thus delegate to it.
+        return self.pipeline.dictionaries
+
     def setup(self):
-        """ Set up the API, assumes pipeline is now setup """
+        """Set up the API, assumes pipeline is now setup"""
         self.pipeline.coders.register_event_consumer(self)
 
     def teardown(self):
@@ -159,10 +171,10 @@ class IntegrationTestAPI(DataHandler):
             fail_color = TestLogger.ORANGE
 
         if value:
-            ast_msg = f'{ast_msg} succeeded: {msg}'
+            ast_msg = f"{ast_msg} succeeded: {msg}"
             self.__log(ast_msg, TestLogger.GREEN)
         else:
-            ast_msg = f'{ast_msg} failed: {msg}'
+            ast_msg = f"{ast_msg} failed: {msg}"
             self.__log(ast_msg, fail_color)
 
         if not expect:
@@ -206,7 +218,7 @@ class IntegrationTestAPI(DataHandler):
             self.event_history.clear()
             self.telemetry_history.clear()
             msg = "Clearing Test Histories"
-            
+
         self.__log(msg, TestLogger.WHITE)
         self.command_history.clear()
 
@@ -228,11 +240,29 @@ class IntegrationTestAPI(DataHandler):
 
     def get_deployment(self):
         """
-        Get the deployment of the target using the loaded FSW dictionary path
+        Get the deployment of the target using the loaded FSW dictionary.
+
         Returns:
-            The name of the deployment (str)
+            The name of the deployment (str) or None if not found
         """
-        return Path(self.pipeline.dictionary_path).parent.parent.name
+        dictionary = str(self.pipeline.dictionary_path)
+
+        try:
+            with open(dictionary, "r") as file:
+                data = json.load(file)
+            return data["metadata"].get("deploymentName")
+        except FileNotFoundError:
+            msg = f"Error: File not found at path: {dictionary}"
+            self.__log(msg, TestLogger.YELLOW)
+            return None
+        except json.JSONDecodeError as e:
+            msg = f"Error decoding JSON: {e}"
+            self.__log(msg, TestLogger.YELLOW)
+            return None
+        except Exception as e:
+            msg = f"An unexpected error occurred: {e} is an unknown key"
+            self.__log(msg, TestLogger.YELLOW)
+            return None
 
     def wait_for_dataflow(self, count=1, channels=None, start=None, timeout=120):
         """
@@ -252,10 +282,94 @@ class IntegrationTestAPI(DataHandler):
             count, channels=channels, history=history, start=start, timeout=timeout
         )
         if not result:
-            msg = f'Failed to detect any data flow for {timeout} s.'
+            msg = f"Failed to detect any data flow for {timeout} s."
             self.__log(msg, TestLogger.RED)
             assert False, msg
         self.remove_telemetry_subhistory(history)
+
+    def get_config_file_path(self):
+        """
+        Accessor for IntegrationTestAPI's deployment configuration file.
+
+        Returns:
+            path to user-specified deployment configuration file (str) or None if not defined
+        """
+        if self.deployment_config:
+            return self.deployment_config
+        else:
+            return None
+
+    def load_config_file(self):
+        """
+        Load user-specified deployment configuration JSON file.
+
+        Returns:
+            JSON object as a dictionary
+        """
+        config_file = self.get_config_file_path()
+
+        try:
+            with open(config_file, "r") as file:
+                result = json.load(file)
+            return result
+        except FileNotFoundError:
+            msg = f"Error: File not found at path {config_file}"
+            self.__log(msg, TestLogger.RED)
+            assert False, msg
+        except json.JSONDecodeError as e:
+            msg = f"Error decoding JSON: {e}"
+            self.__log(msg, TestLogger.RED)
+            assert False, msg
+        except Exception as e:
+            msg = f"An unexpected error occurred: {e}"
+            self.__log(msg, TestLogger.RED)
+            assert False, msg
+
+    def get_mnemonic(self, comp=None, name=None):
+        """
+        Get deployment mnemonic of specified item from user-specified deployment
+        configuration file.
+
+        Args:
+            comp: qualified name of the component instance (str), i.e. "<component>.<instance>"
+            name: command, channel, or event name (str) [optional]
+        Returns:
+            deployment mnemonic of specified item (str) or native mnemonic (str) if not found
+        """
+        data = self.load_config_file()
+
+        if data:
+            try:
+                mnemonic = data[comp]
+                return f"{mnemonic}.{name}" if name else f"{mnemonic}"
+            except KeyError:
+                self.__log(f"Error: {comp} not found", TestLogger.YELLOW)
+                return f"{comp}.{name}" if name else f"{comp}"
+        else:
+            return f"{comp}.{name}" if name else f"{comp}"
+
+    def get_prm_db_path(self) -> str:
+        """
+        Get file path to parameter db from user-specified deployment configuration file.
+
+        Returns:
+            file path to parameter db (str) or None if not found
+        """
+        data = self.load_config_file()
+
+        if data:
+            try:
+                filepath = data["Svc.PrmDb.filename"]
+                if filepath.startswith("/"):
+                    return filepath
+                else:
+                    msg = f"Error: {filepath} did not start with a forward slash"
+                    self.__log(msg, TestLogger.RED)
+                    assert False, msg
+            except KeyError:
+                return None
+        else:
+            return None
 
     ######################################################################################
     #   History Functions
@@ -444,7 +558,15 @@ class IntegrationTestAPI(DataHandler):
             return self.await_event_sequence(events, start=start, timeout=timeout)
         return self.await_event(events, start=start, timeout=timeout)
 
-    def send_and_assert_command(self, command, args=[], max_delay=None, timeout=5, events=None, commander="cmdDisp"):
+    def send_and_assert_command(
+        self,
+        command,
+        args=[],
+        max_delay=None,
+        timeout=5,
+        events=None,
+        commander="cmdDisp",
+    ):
         """
         This helper will send a command and verify that the command was dispatched and completed
         within the F' deployment. This helper can retroactively check that the delay between
@@ -461,7 +583,9 @@ class IntegrationTestAPI(DataHandler):
             returns a list of the EventData objects found by the search
         """
         cmd_id = self.translate_command_name(command)
-        dispatch = [self.get_event_pred(f"{commander}.OpCodeDispatched", [cmd_id, None])]
+        dispatch = [
+            self.get_event_pred(f"{commander}.OpCodeDispatched", [cmd_id, None])
+        ]
         complete = [self.get_event_pred(f"{commander}.OpCodeCompleted", [cmd_id])]
         events = dispatch + (events if events else []) + complete
         results = self.send_and_assert_event(command, args, events, timeout=timeout)
@@ -470,7 +594,6 @@ class IntegrationTestAPI(DataHandler):
             msg = f"The delay, {delay}, between the two events should be < {max_delay}"
             assert delay < max_delay, msg
         return results
-
 
     ######################################################################################
     #   Command Asserts
@@ -547,14 +670,18 @@ class IntegrationTestAPI(DataHandler):
         """
         if isinstance(channel, str):
             ch_dict = self.pipeline.dictionaries.channel_name
-            matching = [ch_dict[name].get_id() for name in ch_dict.keys() if name.endswith(f".{channel}")] 
+            matching = [
+                ch_dict[name].get_id()
+                for name in ch_dict.keys()
+                if name.endswith(f".{channel}")
+            ]
             if channel in ch_dict:
                 return ch_dict[channel].get_id()
             if force_component or not matching:
                 msg = f"The telemetry mnemonic, {channel}, wasn't in the dictionary"
                 raise KeyError(msg)
             return matching
-        
+
         ch_dict = self.pipeline.dictionaries.channel_id
         if channel in ch_dict:
             return channel
@@ -584,7 +711,11 @@ class IntegrationTestAPI(DataHandler):
 
         if not predicates.is_predicate(channel) and channel is not None:
             channel = self.translate_telemetry_name(channel, force_component=False)
-            channel = predicates.is_a_member_of(channel) if isinstance(channel, list) else predicates.equal_to(channel)
+            channel = (
+                predicates.is_a_member_of(channel)
+                if isinstance(channel, list)
+                else predicates.equal_to(channel)
+            )
 
         if not predicates.is_predicate(value) and value is not None:
             value = predicates.equal_to(value)
@@ -768,7 +899,11 @@ class IntegrationTestAPI(DataHandler):
         """
         if isinstance(event, str):
             event_dict = self.pipeline.dictionaries.event_name
-            matching = [event_dict[name].get_id() for name in event_dict.keys() if name.endswith(f".{event}")] 
+            matching = [
+                event_dict[name].get_id()
+                for name in event_dict.keys()
+                if name.endswith(f".{event}")
+            ]
             if event in event_dict:
                 return event_dict[event].get_id()
             if force_component or not matching:
@@ -805,7 +940,11 @@ class IntegrationTestAPI(DataHandler):
 
         if not predicates.is_predicate(event) and event is not None:
             event = self.translate_event_name(event, force_component=False)
-            event = predicates.is_a_member_of(event) if isinstance(event, list) else predicates.equal_to(event)
+            event = (
+                predicates.is_a_member_of(event)
+                if isinstance(event, list)
+                else predicates.equal_to(event)
+            )
 
         if not predicates.is_predicate(args) and args is not None:
             args = predicates.args_predicate(args)
@@ -993,6 +1132,38 @@ class IntegrationTestAPI(DataHandler):
         return results
 
     ######################################################################################
+    #   File Uplink functions
+    ######################################################################################
+
+    def uplink_file_and_await_completion(self, file_path, destination=None, timeout=10):
+        """
+        This function will upload a file and wait for its completion, awaiting for the
+        FileReceived event.
+
+        Args:
+            file_path: the path to the file to upload
+            destination: the destination path for the uploaded file
+            timeout: the maximum time to wait for the event
+        """
+        self.uplink_file(file_path, destination)
+        self.await_event("FileReceived", timeout=timeout)
+
+    def uplink_file(self, file_path, destination=None):
+        """
+        This function will upload a file to the specified location.
+
+        Note: this will simply put the file on the outgoing queue. No guarantee
+        is made on when the file will be delivered. To wait for the completion of
+        the file uplink, use uplink_file_and_await_completion()
+
+        Args:
+            file_path: the path to the file to upload
+        """
+        uplink_file = Path(self.pipeline.up_store) / Path(file_path).name
+        shutil.copy2(file_path, uplink_file)
+        self.pipeline.files.uplinker.enqueue(str(uplink_file), destination)
+
+    ######################################################################################
     #   History Searches
     ######################################################################################
     class __HistorySearcher:
@@ -1102,11 +1273,13 @@ class IntegrationTestAPI(DataHandler):
                             return searcher.get_return_value()
                     time.sleep(0.1)
             except self.TimeoutException:
-                self.__log(f'{name} timed out and ended unsuccessfully.', TestLogger.YELLOW)
+                self.__log(
+                    f"{name} timed out and ended unsuccessfully.", TestLogger.YELLOW
+                )
             finally:
                 signal.alarm(0)
         else:
-            self.__log(f'{name} ended unsuccessfully.', TestLogger.YELLOW)
+            self.__log(f"{name} ended unsuccessfully.", TestLogger.YELLOW)
         return searcher.get_return_value()
 
     def find_history_item(self, search_pred, history, start=None, timeout=0):
@@ -1260,7 +1433,9 @@ class IntegrationTestAPI(DataHandler):
                     self.log(f"Count search counted another item: {item}")
                     self.ret_val.append(item)
                     if self.count_pred(len(self.ret_val)):
-                        msg = f"Count search found a correct amount: {len(self.ret_val)}"
+                        msg = (
+                            f"Count search found a correct amount: {len(self.ret_val)}"
+                        )
                         self.log(msg, TestLogger.YELLOW)
                         return True
                 return False

@@ -72,7 +72,7 @@ import json
 import os
 import sys
 from typing import List, Dict, Union, ForwardRef
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, computed_field, model_validator
 from typing import List, Union
 import argparse
 from binascii import crc32
@@ -88,128 +88,7 @@ class bcolors:
     UNDERLINE = '\033[4m'
 
 
-# This defines the data in the container header.  When this is ultimately defined in the json dictionary,
-# then this can be removed.
-header_data = {
-    "typeDefinitions" : [
-        {
-            "kind": "array",
-            "qualifiedName": "UserDataArray",
-            "size": 32,
-            "elementType": {
-                "name": "U8",
-                "kind": "integer",
-                "signed": False,
-                "size": 8
-            }
-        },
-
-        {
-            "kind": "struct",
-            "qualifiedName": "timeStruct",
-            "members": {
-                "seconds": {
-                    "type": {
-                        "name": "U32",
-                        "kind": "integer",
-                        "signed": False,
-                        "size": 32
-                    }
-                },
-                "useconds": {
-                    "type": {
-                        "name": "U32",
-                        "kind": "integer",
-                        "signed": False,
-                        "size": 32
-                    }
-                },
-                "timeBase": {
-                    "type": {
-                        "name": "U16",
-                        "kind": "integer",
-                        "signed": False,
-                        "size": 16
-                    }
-                },
-                "context": {
-                    "type": {
-                        "name": "U8",
-                        "kind": "integer",
-                        "signed": False,
-                        "size": 8
-                    }
-                }
-            }
-        }
-    ],
-
-    "enums" : [
-    ],
-
-    "header": {
-        "PacketDescriptor": {
-            "type": {
-                "name": "U32",
-                "kind": "integer",
-                "signed": False,
-                "size": 32
-            }
-        },
-        "Id": {
-            "type": {
-                "name": "U32",
-                "kind": "integer",
-                "signed": False,
-                "size": 32
-            }
-        },
-        "Priority": {
-            "type": {
-                "name": "U32",
-                "kind": "integer",
-                "signed": False,
-                "size": 32
-            }
-        },
-        "TimeTag": {
-            "type": {
-                "name": "timeStruct",
-                "kind": "qualifiedIdentifier"
-            }
-        },
-        "ProcTypes": {
-            "type": {
-                "name": "U8",
-                "kind": "integer",
-                "signed": False,
-                "size": 8
-            }
-        },
-        "UserData": {
-            "type": {
-                "name": "UserDataArray",
-                "kind": "qualifiedIdentifier"
-            }
-        },
-        "DpState": {
-            "type": {
-                "name": "U8",
-                "kind": "integer",
-                "signed": False,
-                "size": 8
-            }
-        },
-        "DataSize": {
-            "type": {
-                "name": "U16",
-                "kind": "integer",
-                "signed": False,
-                "size": 16
-            }       
-        }
-    },
-
+header_hash_data = {
     "headerHash": {
         "type": {
             "name": "U32",
@@ -218,25 +97,6 @@ header_data = {
             "size": 32
         }
     },
-
-    "dataId": {
-        "type": {
-            "name": "U32",
-            "kind": "integer",
-            "signed": False,
-            "size": 32
-        }
-    },
-
-    "dataSize": {
-        "type": {
-            "name": "U16",
-            "kind": "integer",
-            "signed": False,
-            "size": 16
-        }
-    },
-
     "dataHash": {
         "type": {
             "name": "U32",
@@ -305,9 +165,21 @@ class BoolType(BaseModel):
         if v != "bool":
             raise ValueError('Check the "kind" field')
         return v
+    
+class StringType(BaseModel):
+    name: str
+    kind: str
+    size: int
+
+    @field_validator('kind')
+    def kind_qualifiedIdentifier(cls, v):
+        if v != "string":
+            raise ValueError('Check the "kind" field')
+        return v
 
 Type = ForwardRef('Type')
 ArrayType = ForwardRef('ArrayType')
+AliasType = ForwardRef('AliasType')
 
 class QualifiedType(BaseModel):
     kind: str
@@ -320,8 +192,9 @@ class QualifiedType(BaseModel):
         return v
 
 class StructMember(BaseModel):
-    type: Union[IntegerType, FloatType, BoolType, QualifiedType]
+    type: Union[IntegerType, FloatType, BoolType, StringType, QualifiedType]
     size: int = 1
+    index: int
 
 class StructType(BaseModel):
     kind: str
@@ -333,18 +206,36 @@ class StructType(BaseModel):
         if v != "struct":
             raise ValueError('Check the "kind" field')
         return v
+    
+class AliasType(BaseModel):
+    kind: str
+    qualifiedName: str
+    type: Union[AliasType, StructType, ArrayType, IntegerType, BoolType, FloatType, StringType, QualifiedType]
+    underlyingType: Union[StructType, ArrayType, IntegerType, BoolType, FloatType, StringType, QualifiedType]
+
+    @field_validator('kind')
+    def kind_qualifiedIdentifier(cls, v):
+        if v != "alias":
+            raise ValueError('Check the "kind" field')
+        return v
 
 class ArrayType(BaseModel):
     kind: str
     qualifiedName: str
     size: int
-    elementType: Union[StructType, ArrayType, IntegerType, FloatType, QualifiedType]
+    elementType: Union[AliasType, StructType, ArrayType, IntegerType, BoolType, FloatType, StringType, QualifiedType]
 
     @field_validator('kind')
     def kind_qualifiedIdentifier(cls, v):
         if v != "array":
             raise ValueError('Check the "kind" field')
         return v
+
+class Constant(BaseModel):
+    qualifiedName: str
+    type: Union[IntegerType, FloatType, BoolType, StringType]
+    value: Union[int, float, bool, str]
+
 
 class EnumeratedConstant(BaseModel):
     name: str
@@ -366,11 +257,11 @@ class EnumType(BaseModel):
 
 
 class Type(BaseModel):
-    type: Union[StructType, ArrayType, IntegerType, FloatType, BoolType, QualifiedType]
+    type: Union[AliasType, StructType, ArrayType, IntegerType, FloatType, BoolType, QualifiedType, StringType]
 
 class RecordStruct(BaseModel):
     name: str
-    type: Union[StructType, ArrayType, IntegerType, FloatType, BoolType, QualifiedType]
+    type: Union[AliasType, StructType, ArrayType, IntegerType, FloatType, BoolType, QualifiedType, StringType]
     array: bool
     id: int
     annotation: str
@@ -388,7 +279,8 @@ class ContainerStruct(BaseModel):
 
 class FprimeDict(BaseModel):
     metadata: Dict[str, Union[str, List[str]]]
-    typeDefinitions: List[Union[ArrayType, StructType, EnumType]]
+    typeDefinitions: List[Union[AliasType, ArrayType, StructType, EnumType]]
+    constants: List[Constant]
     records: List[RecordStruct]
     containers: List[ContainerStruct]
 
@@ -398,19 +290,82 @@ class FprimeDict(BaseModel):
 # -------------------------------------------------------------------------------------
 
 class DPHeader(BaseModel):
-    typeDefinitions: List[Union[ArrayType, StructType, EnumType]]
-    header: Dict[str, Type]
+    typeDefinitions: List[Union[AliasType, ArrayType, StructType, EnumType]]
+    constants: List[Constant]
     headerHash: Type
-    dataId: Type
-    dataSize: Type
     dataHash: Type
 
+    @computed_field
+    @property
+    def header(self) -> Dict[str, Union[Type, ArrayType, EnumType]]:
+        # Mapping from type/constant names to header field names
+        header_field_names = {
+            "FwPacketDescriptorType": "PacketDescriptor",
+            "FwDpIdType": "Id",
+            "FwDpPriorityType" : "Priority",
+            "Seconds": "Seconds",
+            "USeconds": "USeconds",
+            "FwTimeBaseStoreType": "TimeBase",
+            "FwTimeContextStoreType": "Context",
+            "Fw.DpCfg.ProcType": "ProcTypes",
+            "Fw.DpCfg.CONTAINER_USER_DATA_SIZE": "UserData",
+            "Fw.DpState": "DpState",
+            "FwSizeStoreType": "DataSize"
+        }
+        # All types/constants that make up the DP header
+        # Key: Values of above header_field_names
+        # Values: Initialized to None, populated below based on type names/constants in the JSON dictionary
+        header_dict = {v: None for v in header_field_names.values()}
+        for k, v in header_field_names.items():
+            # Seconds and USeconds are not in the dictionary, but are both always U32
+            if k == "Seconds" or k == "USeconds":
+                header_dict[v] = Type(type=IntegerType(name="U32", kind="integer", size=32, signed=False))
+            # According to Fw.Dp SDD, Header::UserData is an array of U8 of size Fw::DpCfg::CONTAINER_USER_DATA_SIZE.
+            elif k == "Fw.DpCfg.CONTAINER_USER_DATA_SIZE":
+                for t in self.constants:
+                    if t.qualifiedName == k:
+                        header_dict[v] = ArrayType(
+                            kind="array", 
+                            qualifiedName="UserData",
+                            size=t.value,
+                            elementType=IntegerType(name="U8", kind="integer", size=8, signed=False)
+                        )
+                        break
+            else:
+                for t in self.typeDefinitions:
+                    if t.qualifiedName == k:
+                        header_dict[v] = t
+                        break
+
+        return header_dict
+    
+    @computed_field
+    @property
+    def dataId(self) -> AliasType:
+        return self.header.get("Id")
+    
+    @computed_field
+    @property
+    def dataSize(self) -> AliasType:
+        return self.header.get("DataSize")
+
+    def get_size_store_bytes(self) -> int:
+        return self.header.get("DataSize").underlyingType.size // 8
+
+    @model_validator(mode='after')
+    def validate_header(self) -> 'DPHeader':
+        for k, v in self.header.items():
+            if not v:
+                raise ValueError(f'Dictionary is missing type definition or constant {k}.')
+        return self
+
 ArrayType.model_rebuild()
+AliasType.model_rebuild()
 StructType.model_rebuild()
 Type.model_rebuild()
 
-TypeKind = Union[StructType, ArrayType, IntegerType, FloatType, EnumType, BoolType, QualifiedType]
-TypeDef = Union[ArrayType, StructType]
+TypeKind = Union[AliasType, ArrayType, StructType, IntegerType, FloatType, EnumType, BoolType, QualifiedType, StringType]
+TypeDef = Union[AliasType, ArrayType, StructType]
 
 # Map the JSON types to struct format strings
 type_mapping = {
@@ -424,7 +379,8 @@ type_mapping = {
     'U64': 'Q', # Unsigned 64-bit integer
     'F32': 'f',  # 32-bit float
     'F64': 'd',  # 64-bit float
-    'bool': '?' # An 8 bit boolean
+    'bool': '?', # An 8 bit boolean
+    'string': 's'
     # Add more mappings as needed
 }
 
@@ -538,6 +494,7 @@ class DataProductWriter:
         self.binaryFileName = binaryFileName
         self.totalBytesRead = 0
         self.calculatedCRC = 0
+        self.headerJSON = None
 
 
     # ----------------------------------------------------------------------------------------------
@@ -573,8 +530,29 @@ class DataProductWriter:
         except KeyError:
             raise KeyError(f"Unrecognized JSON Dictionary Type: {intType}")
         data = struct.unpack(format_str, bytes_read)[0]
+        return data
 
+    def read_and_deserialize_string(self) -> str:
+        size_store_type_bytes = self.headerJSON.get_size_store_bytes()
+        bytes_read_store = self.binaryFile.read(size_store_type_bytes)
+        if len(bytes_read_store) != size_store_type_bytes:
+            raise IOError(f"Tried to read {size_store_type_bytes} bytes from the binary file, but failed.")
 
+        self.totalBytesRead += size_store_type_bytes
+        
+        format_str = f'{BIG_ENDIAN}H'
+        string_size_data = struct.unpack(format_str, bytes_read_store)[0]
+
+        bytes_read = self.binaryFile.read(string_size_data)
+        if len(bytes_read) != string_size_data:
+            raise IOError(f"Tried to read {string_size_data} bytes from the binary file, but failed.")
+
+        self.calculatedCRC = crc32(bytes_read_store + bytes_read, self.calculatedCRC) & 0xffffffff
+        self.totalBytesRead += string_size_data
+
+        format_str = f'{BIG_ENDIAN}{string_size_data}s'
+        data = struct.unpack(format_str, bytes_read)[0]
+        data = data.decode()
         return data
 
     # -----------------------------------------------------------------------------------------------------------------------
@@ -621,7 +599,7 @@ class DataProductWriter:
     #   AssertionError: If the field_config is not an IntegerType, FloatType, or BoolType.
     # -----------------------------------------------------------------------------------------------------------------------
 
-    def read_field(self, field_config: Union[IntegerType, FloatType, BoolType]) -> Union[int, float, bool]:
+    def read_field(self, field_config: Union[IntegerType, FloatType, BoolType, StringType]) -> Union[int, float, bool]:
 
         if type(field_config) is IntegerType:
             sizeBytes = field_config.size // 8
@@ -631,6 +609,9 @@ class DataProductWriter:
 
         elif type(field_config) is BoolType:
             sizeBytes = field_config.size // 8
+
+        elif type(field_config) is StringType:
+            return self.read_and_deserialize_string()
 
         else:
             assert False, "Unsupported typeKind encountered"
@@ -646,6 +627,7 @@ class DataProductWriter:
     #   The process varies depending on the field's type:
     #   - For basic types (IntegerType, FloatType, BoolType), it directly reads and assigns the value.
     #   - For EnumType, it reads the value, finds the corresponding enum identifier, and assigns it.
+    #   - For AliasType, it reads and assigns the value based on the alias' underlying type.
     #   - For ArrayType, it creates a list, iteratively fills it with elements read recursively, and assigns the list.
     #   - For StructType, it constructs a nested dictionary by recursively processing each struct member.
     #   - For QualifiedType, it resolves the actual type from typeList and recursively processes the field.
@@ -678,6 +660,8 @@ class DataProductWriter:
         elif isinstance(typeKind, BoolType):
             parent_dict[field_name] = self.read_field(typeKind)
 
+        elif isinstance(typeKind, StringType):
+            parent_dict[field_name] = self.read_field(typeKind)
 
         elif isinstance(typeKind, EnumType):
             value = self.read_field(typeKind.representationType)
@@ -685,6 +669,8 @@ class DataProductWriter:
             reverse_mapping = {enum.value: enum.name for enum in enum_mapping}
             parent_dict[field_name] = reverse_mapping[value]
 
+        elif isinstance(typeKind, AliasType):
+            self.get_struct_item(field_name, typeKind.underlyingType, typeList, parent_dict)
 
         elif isinstance(typeKind, ArrayType):
             array_list = []
@@ -696,7 +682,8 @@ class DataProductWriter:
 
         elif isinstance(typeKind, StructType):
             array_list = []
-            for key, member in typeKind.members.items():
+            sorted_members = dict(sorted(typeKind.members.items(), key=lambda member: member[1].index))
+            for key, member in sorted_members.items():
                 for i in range(member.size):
                     element_dict = {}
                     self.get_struct_item(key, member.type, typeList, element_dict)
@@ -738,7 +725,13 @@ class DataProductWriter:
         rootDict = {}
 
         for field_name, field_info in header_fields.items():
-            self.get_struct_item(field_name, field_info.type, headerJSON.typeDefinitions, rootDict)
+            # Header is composed of enums, arrays, and aliases
+            if isinstance(field_info, EnumType):
+                self.get_struct_item(field_name, field_info.representationType, headerJSON.typeDefinitions, rootDict)
+            elif isinstance(field_info, ArrayType):
+                self.get_struct_item(field_name, field_info, headerJSON.typeDefinitions, rootDict)
+            else:
+                self.get_struct_item(field_name, field_info.type, headerJSON.typeDefinitions, rootDict)
 
         computedHash = self.calculatedCRC
         rootDict['headerHash'] = self.read_field(headerJSON.headerHash.type)
@@ -775,7 +768,7 @@ class DataProductWriter:
     def get_record_data(self, headerJSON: DPHeader, dictJSON: FprimeDict) -> Dict[str, int]:
         rootDict = {}
         # Go through all the Records and find the one that matches recordId
-        rootDict['dataId'] = self.read_field(headerJSON.dataId.type)
+        rootDict['dataId'] = self.read_field(headerJSON.dataId.underlyingType)
         for record in dictJSON.records:
             if record.id == rootDict['dataId']:    
                 print(f'Processing Record ID {record.id}')
@@ -866,18 +859,25 @@ class DataProductWriter:
             print(f"Parsing {self.jsonDict}...")
             try:
                 with open(self.jsonDict, 'r') as fprimeDictFile:
-                    dictJSON = FprimeDict(**json.load(fprimeDictFile))
+                    dict_json = json.load(fprimeDictFile)
+                    dictJSON = FprimeDict(**dict_json)
+
+                    header_json = header_hash_data
+                    if "typeDefinitions" in dict_json:
+                        header_json["typeDefinitions"] = dict_json["typeDefinitions"]
+                    if "constants" in dict_json:
+                        header_json["constants"] = dict_json["constants"]
+                    self.headerJSON = DPHeader(**header_json)
+            
             except json.JSONDecodeError as e:
                 raise DictionaryError(self.jsonDict, e.lineno)
             
             self.check_record_data(dictJSON)
 
-            headerJSON = DPHeader(**header_data)
-
             with open(self.binaryFileName, 'rb') as self.binaryFile:
 
                 # Read the header data up until the Records
-                headerData = self.get_header_info(headerJSON)
+                headerData = self.get_header_info(self.headerJSON)
 
                 # Read the total data size
                 dataSize = headerData['DataSize']
@@ -888,13 +888,12 @@ class DataProductWriter:
                 recordList = [headerData]
 
                 while self.totalBytesRead < dataSize:
-
-                    recordData = self.get_record_data(headerJSON, dictJSON)
+                    recordData = self.get_record_data(self.headerJSON, dictJSON)
                     recordList.append(recordData)
 
                 computedCRC = self.calculatedCRC
                 # Read the data checksum
-                headerData['dataHash'] = self.read_field(headerJSON.dataHash.type)
+                headerData['dataHash'] = self.read_field(self.headerJSON.dataHash.type)
 
                 if computedCRC != headerData['dataHash']:
                     raise CRCError("Data", headerData['dataHash'], computedCRC)

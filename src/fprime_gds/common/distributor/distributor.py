@@ -13,8 +13,10 @@ descriptor header will be passed on to the registered objects.
 
 @bug No known bugs
 """
+
 import logging
 
+from fprime.common.models.serialize.type_exceptions import DeserializeException
 from fprime_gds.common.decoders.decoder import DecodingException
 from fprime_gds.common.handlers import DataHandler
 from fprime_gds.common.utils import config_manager, data_desc_type
@@ -44,7 +46,7 @@ class Distributor(DataHandler):
         """
         if config is None:
             # Retrieve singleton for the configs, or defaults if singleton unused
-            config = config_manager.ConfigManager().get_instance()
+            config = config_manager.ConfigManager.get_instance()
 
         self.__decoders = {key.name: [] for key in list(data_desc_type.DataDescType)}
 
@@ -146,7 +148,6 @@ class Distributor(DataHandler):
         # | ...                       |      |
         # | ..                        |      |
         #   .                                :
-
         offset = 0
 
         # Parse length
@@ -193,15 +194,26 @@ class Distributor(DataHandler):
         self.__buf.extend(data)
 
         (leftover_data, raw_msgs) = self.parse_into_raw_msgs_api(self.__buf)
-        assert leftover_data == self.__buf, "Leftover data is not equivalent to the remaining data in buffer"
+        assert (
+            leftover_data == self.__buf
+        ), "Leftover data is not equivalent to the remaining data in buffer"
 
         for raw_msg in raw_msgs:
-            (length, data_desc, msg) = self.parse_raw_msg_api(raw_msg)
+            try:
+                (length, data_desc, msg) = self.parse_raw_msg_api(raw_msg)
+                data_desc_key = data_desc_type.DataDescType(data_desc).name
+            except DeserializeException as deserialize_exception:
+                LOGGER.warning(f"Invalid message: {deserialize_exception}")
+                return
+            decoders = self.__decoders.get(data_desc_key, None)
+            if not decoders:
+                LOGGER.warning(f"No decoder registered for: {data_desc_key}")
+                return
 
-            data_desc_key = data_desc_type.DataDescType(data_desc).name
-
-            for d in self.__decoders[data_desc_key]:
+            for d in decoders:
                 try:
                     d.data_callback(msg)
                 except DecodingException as dexc:
-                    LOGGER.warning("Decoding error occurred: %s. Skipping.", dexc)
+                    LOGGER.warning(f"Decoding error: {dexc}")
+                except Exception as exc:
+                    LOGGER.warning(f"Parsing error: {exc}")

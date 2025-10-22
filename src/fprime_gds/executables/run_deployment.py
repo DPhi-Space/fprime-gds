@@ -5,11 +5,14 @@
 ####
 import os
 import sys
+import copy
+import pathlib
 import webbrowser
 
 from fprime_gds.executables.cli import (
     BinaryDeployment,
     ConfigDrivenParser,
+    CompositeParser,
     CommParser,
     GdsParser,
     ParserBase,
@@ -37,8 +40,16 @@ def parse_args():
         CommParser,
         PluginArgumentParser,
     ]
+    # If the FPRIME_GDS_CONFIG_PATH environment variable is set, set its value to be the default
+    # config path
+    if "FPRIME_GDS_CONFIG_PATH" in os.environ:
+        ConfigDrivenParser.set_default_configuration(
+            pathlib.Path(os.environ["FPRIME_GDS_CONFIG_PATH"])
+        )
     # Parse the arguments, and refine through all handlers
-    args, parser = ConfigDrivenParser.parse_args(arg_handlers, "Run F prime deployment and GDS")
+    args, parser = ConfigDrivenParser.parse_args(
+        arg_handlers, "Run F prime deployment and GDS"
+    )
     return args
 
 
@@ -101,6 +112,7 @@ def launch_html(parsed_args):
     Return:
         launched process
     """
+    composite_parser = CompositeParser([StandardPipelineParser, ConfigDrivenParser])
     reproduced_arguments = StandardPipelineParser().reproduce_cli_args(parsed_args)
     if "--log-directly" not in reproduced_arguments:
         reproduced_arguments += ["--log-directly"]
@@ -175,11 +187,21 @@ def launch_comm(parsed_args):
     )
 
 
-def launch_plugin(plugin_class_instance):
+def launch_plugin(parsed_args, plugin_class_instance):
     """Launch a plugin instance"""
-    plugin_name = getattr(plugin_class_instance, "get_name", lambda: cls.__name__)()
+    plugin_name = getattr(
+        plugin_class_instance,
+        "get_name",
+        lambda: plugin_class_instance.__class__.__name__,
+    )()
+    plugin_args = copy.deepcopy(parsed_args)
+    # Set logging to use a subdirectory within the root logs directory
+    plugin_logs = os.path.join(plugin_args.logs, plugin_name)
+    os.mkdir(plugin_logs)
+    plugin_args.logs = plugin_logs
+    plugin_args.log_directly = True
     return launch_process(
-        plugin_class_instance.get_process_invocation(),
+        plugin_class_instance.get_process_invocation(plugin_args),
         name=f"{ plugin_name } Plugin App",
         launch_time=1,
     )
@@ -218,11 +240,11 @@ def main():
     try:
         procs = [launcher(parsed_args) for launcher in launchers]
         _ = [
-            launch_plugin(cls())
+            launch_plugin(parsed_args, cls(namespace=parsed_args))
             for cls in Plugins.system().get_feature_classes("gds_app")
         ]
         _ = [
-            instance().run()
+            instance().run(parsed_args)
             for instance in Plugins.system().get_feature_classes("gds_function")
         ]
 

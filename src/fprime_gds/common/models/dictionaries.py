@@ -49,6 +49,9 @@ class Dictionaries:
         self._fw_type_name_dict = None
         self._versions = None
         self._metadata = None
+        self._dictionary_path = None
+        self._packet_spec_path = None
+        self._packet_set_name = None
 
     def load_dictionaries(self, dictionary, packet_spec, packet_set_name):
         """
@@ -57,7 +60,13 @@ class Dictionaries:
 
         :param dictionary: dictionary path used for loading dictionaries
         :param packet_spec: specification for packets, or None, for packetized telemetry
+        :param packet_set_name: name of packet set in case multiple are available
         """
+        # Update the "from" values
+        self._dictionary_path = dictionary
+        self._packet_spec_path = packet_spec
+        self._packet_set_name = packet_set_name
+
         if Path(dictionary).is_file() and ".json" in Path(dictionary).suffixes:
             # Events
             json_event_loader = (
@@ -128,15 +137,24 @@ class Dictionaries:
             msg = f"[ERROR] Dictionary '{dictionary}' does not exist."
             raise Exception(msg)
         # Check for packet specification
-        if self._metadata["dictionary_type"] == "json" and packet_set_name is not None:
-            packet_loader = fprime_gds.common.loaders.pkt_json_loader.PktJsonLoader(dictionary)
-            self._packet_dict = packet_loader.get_id_dict(
-                None, packet_set_name, self._channel_name_dict
-            )
-        elif packet_spec is not None:
-            packet_loader = fprime_gds.common.loaders.pkt_xml_loader.PktXmlLoader(dictionary)
+        if packet_spec is not None:
+            packet_loader = fprime_gds.common.loaders.pkt_xml_loader.PktXmlLoader()
             self._packet_dict = packet_loader.get_id_dict(
                 packet_spec, self._channel_name_dict
+            )
+        # Otherwise use JSON dictionary to attempt automatic packet loading
+        elif self._metadata["dictionary_type"] == "json":
+            packet_loader = fprime_gds.common.loaders.pkt_json_loader.PktJsonLoader(dictionary)
+            if packet_set_name is None:
+                names = packet_loader.get_packet_set_names(None)
+                if len(names) == 0:
+                    self._packet_dict = None
+                    return
+                elif len(names) > 1:
+                    raise Exception("[ERROR] Multiple packet sets, must set --packet-set-name")
+                packet_set_name = names[0]
+            self._packet_dict = packet_loader.get_id_dict(
+                None, packet_set_name, self._channel_name_dict
             )
         else:
             self._packet_dict = None
@@ -193,6 +211,21 @@ class Dictionaries:
         Note: framework_version and project_version are also available as separate properties
         for legacy reasons. New code should use the metadata property."""
         return self._metadata
+
+    @property
+    def dictionary_path(self):
+        """ Dictionary Path """
+        return self._dictionary_path
+
+    @property
+    def packet_spec_path(self):
+        """ Dictionary Path """
+        return self._packet_spec_path
+    
+    @property
+    def packet_set_name(self):
+        """ Dictionary Path """
+        return self._packet_set_name
 
     @property
     def packet(self):
