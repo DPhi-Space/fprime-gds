@@ -66,17 +66,13 @@ def main():
         sys.exit(-1)
 
         # Create the handling components for either side of this script, adapter for hardware, and ground for the GDS side
-    ground = GrafanaGround()
-    """
+    # ground = GrafanaGround()
     if args.zmq:
         ground = ZmqGround(args.zmq_transport)
-    elif args.grafana:
-        ground = GrafanaGround()
     else:
         ground = fprime_gds.common.communication.ground.TCPGround(
             args.tts_addr, args.tts_port
         )
-    """
     adapter = Plugins.system().get_selected_class("communication")()
 
     # Set the framing class used and pass it to the uplink and downlink component constructions giving each a separate
