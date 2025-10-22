@@ -7,6 +7,7 @@ across a Tcp and/or UDP network interface.
 
 @author lestarch
 """
+
 import abc
 import atexit
 import logging
@@ -72,7 +73,7 @@ class IpAdapter(fprime_gds.common.communication.adapters.base.BaseAdapter):
         self.blob = b""
 
     def __repr__(self):
-        """ String representation for logging """
+        """String representation for logging"""
         return f"Paired-TCP/UDP@{self.address}:{self.port}"
 
     def open(self):
@@ -83,16 +84,22 @@ class IpAdapter(fprime_gds.common.communication.adapters.base.BaseAdapter):
         # Keep alive thread
         try:
             # Setup the tcp and udp adapter and run a thread to service them
-            self.thtcp = threading.Thread(target=self.th_handler, name="TcpCommThread", args=(self.tcp,))
+            self.thtcp = threading.Thread(
+                target=self.th_handler, name="TcpCommThread", args=(self.tcp,)
+            )
             self.thtcp.daemon = True
             self.thtcp.start()
-            self.thudp = threading.Thread(target=self.th_handler, name="UdpCommThread", args=(self.udp,))
+            self.thudp = threading.Thread(
+                target=self.th_handler, name="UdpCommThread", args=(self.udp,)
+            )
             self.thudp.daemon = True
             self.thudp.start()
             # Start up a keep-alive ping if desired. This will hit the TCP uplink, and die if the connection is down
             if self.keepalive_interval > 0.0:
                 self.keepalive_thread = threading.Thread(
-                    target=self.th_alive, name="KeepCommAliveThread", args=[self.keepalive_interval]
+                    target=self.th_alive,
+                    name="KeepCommAliveThread",
+                    args=[self.keepalive_interval],
                 )
                 self.keepalive_thread.start()
         except (ValueError, TypeError) as exc:
@@ -141,6 +148,8 @@ class IpAdapter(fprime_gds.common.communication.adapters.base.BaseAdapter):
                 data += self.data_chunks.get_nowait()
         except queue.Empty:
             pass
+        if data:
+            print(data.hex())
         return data
 
     def th_alive(self, interval):
@@ -154,7 +163,7 @@ class IpAdapter(fprime_gds.common.communication.adapters.base.BaseAdapter):
 
     @classmethod
     def get_name(cls):
-        """ Get the name of this adapter  """
+        """Get the name of this adapter"""
         return "ip"
 
     @classmethod
@@ -196,7 +205,7 @@ class IpAdapter(fprime_gds.common.communication.adapters.base.BaseAdapter):
     @classmethod
     @gds_plugin_implementation
     def register_communication_plugin(cls):
-        """ Register this as a communication plugin """
+        """Register this as a communication plugin"""
         return cls
 
     @classmethod
@@ -212,7 +221,6 @@ class IpAdapter(fprime_gds.common.communication.adapters.base.BaseAdapter):
                 check_port(address, port)
         except OSError as os_error:
             raise ValueError(f"{os_error}")
-
 
 
 class IpHandler(abc.ABC):

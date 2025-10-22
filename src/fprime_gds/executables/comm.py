@@ -27,9 +27,10 @@ import fprime_gds.common.communication.adapters.ip
 import fprime_gds.common.communication.ground
 import fprime_gds.common.logger
 import fprime_gds.executables.cli
-from fprime_gds.common.communication.updown import CgDownlinker, CgUplinker
+from fprime_gds.common.communication.updown import Downlinker, Uplinker
 from fprime_gds.common.zmq_transport import ZmqGround
 from fprime_gds.plugin.system import Plugins
+from fprime_gds.common.grafana_transport import GrafanaGround
 
 # Uses non-standard PIP package pyserial, so test the waters before getting a hard-import crash
 try:
@@ -64,14 +65,18 @@ def main():
         )
         sys.exit(-1)
 
-    # Create the handling components for either side of this script, adapter for hardware, and ground for the GDS side
+        # Create the handling components for either side of this script, adapter for hardware, and ground for the GDS side
+    ground = GrafanaGround()
+    """
     if args.zmq:
         ground = ZmqGround(args.zmq_transport)
+    elif args.grafana:
+        ground = GrafanaGround()
     else:
         ground = fprime_gds.common.communication.ground.TCPGround(
             args.tts_addr, args.tts_port
         )
-
+    """
     adapter = Plugins.system().get_selected_class("communication")()
 
     # Set the framing class used and pass it to the uplink and downlink component constructions giving each a separate
@@ -98,10 +103,10 @@ def main():
                     "Failed to open %s. Unframed data will be discarded.",
                     discarded_file_handle_path,
                 )
-        downlinker = CgDownlinker(
+        downlinker = Downlinker(
             adapter, ground, framer_instance, discarded=discarded_file_handle
         )
-        uplinker = CgUplinker(adapter, ground, framer_instance, downlinker)
+        uplinker = Uplinker(adapter, ground, framer_instance, downlinker)
 
         # Open resources for the handlers on either side, this prepares the resources needed for reading/writing data
         ground.open()

@@ -23,26 +23,6 @@ from fprime_gds.common.utils.data_desc_type import DataDescType
 DW_LOGGER = logging.getLogger("downlink")
 UP_LOGGER = logging.getLogger("uplink")
 
-UNACKED_RESEND_TIMEOUT = 20  # seconds
-UNACKED_MAX_PKTS = 20
-
-acks = []
-rets = []
-
-
-def resend_unacked():
-    from protocol import get_unacked_pkts
-
-    resend_unacked_list = []
-
-    unacked_pkts = get_unacked_pkts()
-    for unacked in unacked_pkts:
-        if time.time() >= unacked["time_sent"] + UNACKED_RESEND_TIMEOUT:
-            resend_unacked_list.append(unacked["data"])
-            unacked["time_sent"] += UNACKED_RESEND_TIMEOUT
-
-    return resend_unacked_list
-
 
 class Downlinker:
     """Encapsulates communication downlink functions
