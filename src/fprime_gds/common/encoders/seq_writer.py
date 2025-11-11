@@ -28,9 +28,9 @@ class SeqBinaryWriter:
 
         self.__fd = None
         self.__timebase = timebase
-        self.desc_obj = U16Type()
-        self.opcode_obj = U16Type()
-        self.len_obj = U16Type()
+        self.desc_obj = U16Type()  # config.get_type("FwPacketDescriptorType")
+        self.opcode_obj = U16Type()  # config.get_type("FwOpcodeType")
+        self.len_obj = U16Type()  # config.get_type("msg_len")
 
     def open(self, filename):
         """
