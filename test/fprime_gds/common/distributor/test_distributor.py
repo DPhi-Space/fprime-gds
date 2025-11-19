@@ -7,18 +7,17 @@ Created on Jul 10, 2020
 
 
 from fprime_gds.common.distributor.distributor import Distributor
-from fprime_gds.common.utils import config_manager
-from fprime.common.models.serialize.numerical_types import U16Type, U32Type
+from fprime_gds.common.utils.config_manager import ConfigManager
+from fprime_gds.common.models.serialize.numerical_types import U16Type, U32Type
 
 def test_distributor():
     """
     Tests the raw messages and leftover data for the distributor
     """
-    config = config_manager.ConfigManager.get_instance()
-    config.set_config("msg_len", U16Type)
-    config.set_type("FwPacketDescriptorType", U32Type)
+    ConfigManager().set_config("msg_len", U16Type)
+    ConfigManager().set_type("FwPacketDescriptorType", U32Type)
 
-    dist = Distributor(config)
+    dist = Distributor()
 
     header_1 = b"\x00\x0E\x00\x00\x00\x04"
     length_1 = 14
@@ -55,3 +54,5 @@ def test_distributor():
     assert test_desc_2 == desc_2, f"expected 2nd desc to be {desc_2} but found {test_desc_2}"
     assert (test_msg_1 == data_1), f"expected 1st msg to be {list(data_1)} but found {list(test_msg_1)}"
     assert (test_msg_2 == data_2), f"expected 2nd msg to be {list(data_2)} but found {list(test_msg_2)}"
+
+    ConfigManager()._set_defaults()  # reset defaults not to interfere with other tests

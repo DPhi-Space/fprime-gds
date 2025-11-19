@@ -87,7 +87,7 @@ deframed
 deframer
 deframing
 DEPRECATEDLIST
-DESER
+deser
 Deserial
 deserializes
 dests
@@ -156,6 +156,7 @@ FONTNAME
 FONTPATH
 FONTSIZE
 fpext
+FPGA
 fpp
 fpow
 fprime
@@ -216,6 +217,7 @@ ixx
 janamian
 jawest
 Jdk
+jishii
 jpl
 JSO
 jsonable
@@ -223,6 +225,7 @@ jsonified
 jsonify
 junitxml
 keepalive
+kevin
 keyify
 kinda
 lalr
@@ -234,6 +237,7 @@ libcrc
 libiconv
 Linting
 LIw
+lld
 logdata
 logdir
 logpath
@@ -278,6 +282,7 @@ OKGREEN
 OMG
 oob
 OPREG
+oran
 oring
 osexc
 OSX
@@ -341,6 +346,7 @@ rpaetz
 rst
 saba
 scid
+SCLK
 sdd
 sdiv
 searchdata
@@ -371,6 +377,7 @@ sss
 Ssymbols
 stackoverflow
 startuml
+stdint
 subclasscheck
 subcls
 subcmd

@@ -5,8 +5,8 @@ import time
 import unittest
 
 # these imports are needed to generate data objects.
-from fprime.common.models.serialize.numerical_types import I32Type, U32Type
-from fprime.common.models.serialize.time_type import TimeType
+from fprime_gds.common.models.serialize.numerical_types import I32Type, U32Type
+from fprime_gds.common.models.serialize.time_type import TimeType
 from fprime_gds.common.models.dictionaries import Dictionaries
 from fprime_gds.common.data_types.ch_data import ChData
 from fprime_gds.common.data_types.cmd_data import CmdData

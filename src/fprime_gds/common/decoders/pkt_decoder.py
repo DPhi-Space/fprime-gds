@@ -17,17 +17,17 @@ Example data that would be sent to a decoder that parses events or channels:
 @bug No known bugs
 """
 
-from fprime.common.models.serialize.time_type import TimeType
+from fprime_gds.common.models.serialize.time_type import TimeType
 
 from fprime_gds.common.data_types.ch_data import ChData
 from fprime_gds.common.decoders.ch_decoder import ChDecoder
-from fprime_gds.common.utils import config_manager
+from fprime_gds.common.utils.config_manager import ConfigManager
 
 
 class PktDecoder(ChDecoder):
     """Decoder class for Packetized Telemetry data"""
 
-    def __init__(self, pkt_name_dict, ch_dict, config=None):
+    def __init__(self, pkt_name_dict, ch_dict):
         """
         Constructor
 
@@ -40,12 +40,10 @@ class PktDecoder(ChDecoder):
         Returns:
             An initialized PktDecoder object
         """
-        if config is None:
-            config = config_manager.ConfigManager.get_instance()
-        super().__init__(ch_dict, config)
+        super().__init__(ch_dict)
 
         self.__dict = pkt_name_dict
-        self.id_obj = config.get_type("FwTlmPacketizeIdType")
+        self.id_obj = ConfigManager().get_type("FwTlmPacketizeIdType")()
 
     def decode_api(self, data):
         """

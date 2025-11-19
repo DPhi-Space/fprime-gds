@@ -14,21 +14,24 @@ Example data structure:
 
 @bug No known bugs
 """
-from fprime.common.models.serialize import time_type
-from fprime.common.models.serialize.type_exceptions import TypeException
+
+from fprime_gds.common.models.serialize import time_type
+from fprime_gds.common.models.serialize.type_exceptions import TypeException
 
 from fprime_gds.common.data_types import event_data
 from fprime_gds.common.decoders import decoder
 from fprime_gds.common.decoders.decoder import DecodingException
-from fprime_gds.common.utils import config_manager
+from fprime_gds.common.utils.config_manager import ConfigManager
 
 import logging
+
 LOGGER = logging.getLogger("event_decoder")
+
 
 class EventDecoder(decoder.Decoder):
     """Decoder class for event data"""
 
-    def __init__(self, event_dict, config=None):
+    def __init__(self, event_dict):
         """
         EventDecoder class constructor
 
@@ -41,12 +44,9 @@ class EventDecoder(decoder.Decoder):
         """
         super(EventDecoder, self).__init__()
 
-        if config is None:
-            # Retrieve defaults for the configs
-            config = config_manager.ConfigManager.get_instance()
-
         self.__dict = event_dict
-        self.id_obj = config.get_type("FwEventIdType")
+        FwEventIdType = ConfigManager().get_type("FwEventIdType")
+        self.id_obj = FwEventIdType()
 
     def decode_api(self, data):
         """
@@ -66,7 +66,7 @@ class EventDecoder(decoder.Decoder):
 
         event_list = []
 
-        while (ptr < len(data)):
+        while ptr < len(data):
 
             # Decode event ID here...
             if ptr + self.id_obj.getSize() <= len(data):

@@ -67,7 +67,7 @@ passes un-parsed data onto all objects registered with it.
 The distributer is responsible for taking in raw binary data, parsing off the 
 length and descriptor, and then passing the data to all decoders registered to 
 that descriptor. Descriptor types include events, channels, packets, etc (a full
-enumeration can be found in (src/utils/data_desc_type.py). The binary data that 
+enumeration can be found in (config_manager.py). The binary data that 
 the descriptor receives should be of the form:
 
 ```mermaid
@@ -146,12 +146,11 @@ data. This class also supports the creation of multiple Gds GUI windows which
 all share the same subscriptions and therefore receive the same data. 
 
 ### ConfigManager
-The `ConfigManager` class is responsible for storing configurations used by GDS
-classes. An instance of this class is passed to some GDS classes such as 
-distributors and encoders (to indicate the types of some binary data fields) and
-to some consumers (to indicate colors). The ConfigManager class sets the defaults
-for each config, but a .ini file can also be passed into the constructor to set
-the configs to custom values.
+The `ConfigManager` class is a singleton config class responsible for storing 
+configurations used by GDS classes, including internal GDS types and constants,
+as well as configuration from the FSW JSON dictionary. It can be controlled via
+the `set_*` methods, but it is recommended to use the `DictionaryParser` class
+to automatically load FSW dictionary data into the config manager.
 
 ## Modify GDS Structure
 To setup the structure of the GDS, instances of the above classes are first

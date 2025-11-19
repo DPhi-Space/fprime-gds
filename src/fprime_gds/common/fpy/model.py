@@ -77,7 +77,7 @@ from fprime_gds.common.fpy.bytecode.directives import (
     IntegerTruncate64To8Directive,
 )
 from fprime_gds.common.templates.cmd_template import CmdTemplate
-from fprime.common.models.serialize.time_type import TimeType as TimeValue
+from fprime_gds.common.models.serialize.time_type import TimeType as TimeValue
 
 debug = True
 

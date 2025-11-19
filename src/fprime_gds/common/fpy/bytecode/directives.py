@@ -16,8 +16,8 @@ from typing import ClassVar
 import typing
 from typing import Union
 import struct
-from fprime.common.models.serialize.type_base import BaseType as FppValue
-from fprime.common.models.serialize.numerical_types import (
+from fprime_gds.common.models.serialize.type_base import BaseType as FppValue
+from fprime_gds.common.models.serialize.numerical_types import (
     U8Type as U8Value,
     U16Type as U16Value,
     U32Type as U32Value,
@@ -29,7 +29,7 @@ from fprime.common.models.serialize.numerical_types import (
     F32Type as F32Value,
     F64Type as F64Value,
 )
-from fprime.common.models.serialize.bool_type import BoolType as BoolValue
+from fprime_gds.common.models.serialize.bool_type import BoolType as BoolValue
 from enum import Enum
 
 FwSizeType = U64Value

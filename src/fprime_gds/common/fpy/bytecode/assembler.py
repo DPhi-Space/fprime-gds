@@ -7,10 +7,10 @@ from lark import Lark, Token, Transformer, v_args
 from lark.tree import Meta
 
 from fprime_gds.common.fpy.bytecode.directives import Directive, StackOpDirective
-from fprime.common.models.serialize.type_base import BaseType as FppValue
-from fprime.common.models.serialize.string_type import StringType as StringValue
-from fprime.common.models.serialize.bool_type import BoolType as BoolValue
-from fprime.common.models.serialize.numerical_types import NumericalType as NumericalValue
+from fprime_gds.common.models.serialize.type_base import BaseType as FppValue
+from fprime_gds.common.models.serialize.string_type import StringType as StringValue
+from fprime_gds.common.models.serialize.bool_type import BoolType as BoolValue
+from fprime_gds.common.models.serialize.numerical_types import NumericalType as NumericalValue
 
 fpybc_grammar_str = (Path(__file__).parent / "grammar.lark").read_text()
 
@@ -99,7 +99,8 @@ def no_meta(type):
 def handle_str(meta, s: str):
     return s.strip("'").strip('"')
 
-def handle_bytes(meta, value: list[int|str]|None):
+
+def handle_bytes(meta, value: list[int | str] | None):
     if value is None:
         return bytes()
 

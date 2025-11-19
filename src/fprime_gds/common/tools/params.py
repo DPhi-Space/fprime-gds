@@ -9,11 +9,11 @@ from argparse import ArgumentParser
 from typing import Any
 from fprime_gds.common.loaders.prm_json_loader import PrmJsonLoader
 from fprime_gds.common.templates.prm_template import PrmTemplate
-from fprime.common.models.serialize.type_base import BaseType
-from fprime.common.models.serialize.array_type import ArrayType
-from fprime.common.models.serialize.bool_type import BoolType
-from fprime.common.models.serialize.enum_type import EnumType
-from fprime.common.models.serialize.numerical_types import (
+from fprime_gds.common.models.serialize.type_base import BaseType
+from fprime_gds.common.models.serialize.array_type import ArrayType
+from fprime_gds.common.models.serialize.bool_type import BoolType
+from fprime_gds.common.models.serialize.enum_type import EnumType
+from fprime_gds.common.models.serialize.numerical_types import (
     F32Type,
     F64Type,
     I8Type,
@@ -25,8 +25,8 @@ from fprime.common.models.serialize.numerical_types import (
     U32Type,
     U64Type,
 )
-from fprime.common.models.serialize.serializable_type import SerializableType
-from fprime.common.models.serialize.string_type import StringType
+from fprime_gds.common.models.serialize.serializable_type import SerializableType
+from fprime_gds.common.models.serialize.string_type import StringType
 
 FW_PRM_ID_TYPE_SIZE = 4 # serialized size of the FwPrmIdType
 

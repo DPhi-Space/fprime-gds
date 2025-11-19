@@ -16,10 +16,10 @@ descriptor header will be passed on to the registered objects.
 
 import logging
 
-from fprime.common.models.serialize.type_exceptions import DeserializeException
+from fprime_gds.common.models.serialize.type_exceptions import DeserializeException
 from fprime_gds.common.decoders.decoder import DecodingException
 from fprime_gds.common.handlers import DataHandler
-from fprime_gds.common.utils import config_manager, data_desc_type
+from fprime_gds.common.utils.config_manager import ConfigManager
 
 LOGGER = logging.getLogger("distributor")
 
@@ -32,33 +32,26 @@ class Distributor(DataHandler):
     Decoders can register with a distributor to recv packets of data of a certain description.
     """
 
-    def __init__(self, config=None):
+    def __init__(self):
         """
         Sets up the dictionary of connected decoders and socket client object.
 
         Decoder dictionary is of the form:
         {data descriptor name: list of decoder objects registered for that data}
-
-        Args:
-            config (ConfigManager, default=None): Config manager with
-                   information on what types the message fields are. If None,
-                   defaults are used.
         """
-        if config is None:
-            # Retrieve singleton for the configs, or defaults if singleton unused
-            config = config_manager.ConfigManager.get_instance()
-
-        self.__decoders = {key.name: [] for key in list(data_desc_type.DataDescType)}
+        self.__decoders = {
+            key: [] for key in ConfigManager().get_type("ComCfg.Apid").keys()
+        }
 
         # Internal buffer for un distributed data
         self.__buf = bytearray(b"")
         # Setup key framing
         self.key_frame = None
-        if config.get_config("use_key"):
-            self.key_frame = int(config.get_config("key_val"), 16)
-        self.key_obj = config.get_config("key_val")()
-        self.len_obj = config.get_config("msg_len")()
-        self.desc_obj = config.get_type("FwPacketDescriptorType")
+        if ConfigManager().get_config("use_key"):
+            self.key_frame = int(ConfigManager().get_config("key_val"), 16)
+        self.key_obj = ConfigManager().get_config("key_val")()
+        self.len_obj = ConfigManager().get_config("msg_len")()
+        self.desc_obj = ConfigManager().get_type("FwPacketDescriptorType")()
 
     # NOTE we could use either the type of the object or an enum as the type argument.
     # It should indicate what the decoder decodes.
@@ -200,7 +193,9 @@ class Distributor(DataHandler):
         for raw_msg in raw_msgs:
             try:
                 (length, data_desc, msg) = self.parse_raw_msg_api(raw_msg)
-                data_desc_key = data_desc_type.DataDescType(data_desc).name
+                data_desc_key = (
+                    ConfigManager().get_type("ComCfg.Apid").from_int(data_desc).val
+                )
             except DeserializeException as deserialize_exception:
                 LOGGER.warning(f"Invalid message: {deserialize_exception}")
                 return

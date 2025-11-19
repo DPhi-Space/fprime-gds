@@ -10,8 +10,8 @@ from typing import Type
 from uuid import UUID
 
 import flask.json
-from fprime.common.models.serialize.time_type import TimeType
-from fprime.common.models.serialize.type_base import BaseType, ValueType
+from fprime_gds.common.models.serialize.time_type import TimeType
+from fprime_gds.common.models.serialize.type_base import BaseType, ValueType
 
 from fprime_gds.common.data_types.ch_data import ChData
 from fprime_gds.common.data_types.cmd_data import CmdData
@@ -145,7 +145,7 @@ def time_type(obj):
     """
     assert isinstance(obj, TimeType), "Incorrect type for serialization method"
     return {
-        "base": obj.timeBase.value,
+        "base": obj.timeBase.numeric_value,
         "context": obj.timeContext,
         "seconds": obj.seconds,
         "microseconds": obj.useconds,

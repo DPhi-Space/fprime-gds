@@ -14,7 +14,7 @@ import os.path
 from pathlib import Path
 from typing import Type
 
-import fprime.common.models.serialize.time_type
+from fprime_gds.common.models.serialize.time_type import TimeType
 
 import fprime_gds.common.data_types.cmd_data
 import fprime_gds.common.distributor.distributor
@@ -67,13 +67,13 @@ class StandardPipeline:
         Setup the standard pipeline for moving data from the middleware layer through the GDS layers using the standard
         patterns. This allows just registering the consumers, and invoking 'setup' all other of the GDS support layer.
 
-        :param config: config object used when constructing the pipeline.
+        :param config: UNUSED argument; kept for backwards compatibility. ConfigManager is to be accessed via singleton
         :param dictionaries: dictionary path. Used to setup loading of dictionaries.
         :param file_store: uplink/downlink storage directory
         :param logging_prefix: logging prefix. Defaults to not logging at all.
         :param packet_spec: location of packetized telemetry XML specification.
         """
-        self.distributor = fprime_gds.common.distributor.distributor.Distributor(config)
+        self.distributor = fprime_gds.common.distributor.distributor.Distributor()
         self.client_socket = self.__transport_type()
         # File storage configuration for uplink and downlink
         self.up_store = Path(file_store) / "fprime-uplink"
@@ -87,7 +87,7 @@ class StandardPipeline:
             )
         self.__dictionaries = dictionaries
         self.coders.setup_coders(
-            self.dictionaries, self.distributor, self.client_socket, config
+            self.dictionaries, self.distributor, self.client_socket
         )
         self.histories.setup_histories(self.coders)
         self.files.setup_file_handling(
@@ -200,8 +200,8 @@ class StandardPipeline:
         cmd_data = fprime_gds.common.data_types.cmd_data.CmdData(
             tuple(args), command_template
         )
-        cmd_data.time = fprime.common.models.serialize.time_type.TimeType()
-        cmd_data.time.set_datetime(datetime.datetime.now(), 2)
+        cmd_data.time = TimeType()
+        cmd_data.time.set_datetime(datetime.datetime.now(), TimeType.TimeBase("TB_WORKSTATION_TIME"))
         self.coders.send_command(cmd_data)
 
     @property
@@ -242,5 +242,5 @@ class StandardPipeline:
 
     @property
     def dictionaries(self):
-        """ Dictionaries member """
+        """Dictionaries member"""
         return self.__dictionaries

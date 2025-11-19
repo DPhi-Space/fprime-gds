@@ -16,17 +16,18 @@ Example data that would be sent to a decoder that parses channels:
 
 @bug No known bugs
 """
-from fprime.common.models.serialize.time_type import TimeType
+
+from fprime_gds.common.models.serialize.time_type import TimeType
 
 from fprime_gds.common.data_types.ch_data import ChData
 from fprime_gds.common.decoders.decoder import Decoder, DecodingException
-from fprime_gds.common.utils import config_manager
+from fprime_gds.common.utils.config_manager import ConfigManager
 
 
 class ChDecoder(Decoder):
     """Decoder class for Channel data"""
 
-    def __init__(self, ch_dict, config):
+    def __init__(self, ch_dict):
         """
         ChDecoder class constructor
 
@@ -39,12 +40,8 @@ class ChDecoder(Decoder):
         """
         super().__init__()
 
-        if config is None:
-            # Retrieve singleton for the configs
-            config = config_manager.ConfigManager.get_instance()
-
         self.__dict = ch_dict
-        self.id_obj = config.get_type("FwChanIdType")
+        self.id_obj = ConfigManager().get_type("FwChanIdType")()
 
     def decode_api(self, data):
         """
@@ -65,7 +62,7 @@ class ChDecoder(Decoder):
         # list for decoded channel values
         ch_list = []
 
-        while (ptr < len(data)):
+        while ptr < len(data):
 
             # Decode Ch ID here...
             self.id_obj.deserialize(data, ptr)

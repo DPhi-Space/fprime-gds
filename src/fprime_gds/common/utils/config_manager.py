@@ -15,15 +15,20 @@ Based on the ConfigManager class written by Len Reder in the fprime Gse
          ALL RIGHTS RESERVED. U.S. Government Sponsorship acknowledged.
 """
 
-from fprime.common.models.serialize.numerical_types import (
+from fprime_gds.common.models.serialize.numerical_types import (
     U16Type,
     U32Type,
+    U8Type,
+    ValueType,
 )
-from fprime.common.models.serialize.type_base import BaseType
+from fprime_gds.common.models.serialize.enum_type import EnumType
+from fprime_gds.common.models.serialize.type_exceptions import FprimeGdsException
+
 from typing import Any
 
 
-class ConfigBadTypeException(Exception):
+
+class ConfigBadTypeException(FprimeGdsException):
     def __init__(self, config_name, type_str):
         """
         Constructor
@@ -32,9 +37,7 @@ class ConfigBadTypeException(Exception):
             config_name (string): Name of the config containing the bad type
             type_str (string): Bad type string that caused the error
         """
-        super().__init__(
-            f"Invalid type string {type_str} read in configuration {config_name}"
-        )
+        super().__init__(f"{config_name}: {type_str}")
 
 
 class ConfigManager:
@@ -52,78 +55,76 @@ class ConfigManager:
     # Dictionary holding all config properties
     __prop: dict
 
-    def __init__(self):
-        """
-        Constructor
+    def __new__(cls):
+        """Controls creation of and access to the singleton instance.
 
-        Creates a ConfigManager object with the default configuration values
+        This forbids construction of multiple ConfigManager instances.
+
+        Usage:
+            MyType = ConfigManager().get_type("MyType")
 
         Returns:
-            An instance of the ConfigManager class. Default configurations
-            will be used until the set_configs method is called!
+            The singleton ConfigManager object for this python application
         """
-        # `types` and `constants` are meant to be pulled from the FSW dictionary
-        # `config` is for config that is internal to the GDS
-        self.__prop = {"types": {}, "constants": {}, "config": {}}
-        self._set_defaults()
+        if cls.__instance is None:
+            cls.__instance = super(ConfigManager, cls).__new__(cls)
+            # Initialization of the singleton instance - only ran once
+            cls.__instance.__prop = {"types": {}, "constants": {}, "config": {}}
+            cls.__instance._set_defaults()
+        return cls.__instance
 
     @staticmethod
     def get_instance():
         """
-        Return instance of singleton.
+        Return instance of singleton. Superseded by the __new__ access method, but
+        left for backwards compatibility.
 
         Returns:
             The current ConfigManager object for this python application
         """
-        if ConfigManager.__instance is None:
-            ConfigManager.__instance = ConfigManager()
-        return ConfigManager.__instance
+        return ConfigManager()
 
-    def get_type(self, name: str) -> BaseType:
+    def get_type(self, name: str) -> type[ValueType]:
         """
-        Return an **instance** of the associated type.
-
+        Return the associated type class for the given name.
+        
         Args:
             name (string): Name of the type to retrieve
 
         Returns:
-            If the name is valid, returns an object of a type derived from
-            TypeBase. Otherwise, raises ConfigBadTypeException
+            If the name is valid, returns a class derived from
+            ValueType. Otherwise, raises ConfigBadTypeException
         """
         type_class = self.__prop["types"].get(name, None)
         if type_class is None:
-            raise ConfigBadTypeException(name, "Unknown type name")
-        # Return an instance of the type
-        return type_class()
+            raise ConfigBadTypeException("Unknown type name", name)
+        return type_class
 
-    def set_type(self, name: str, type_class: type[BaseType]):
+    def set_type(self, name: str, type_class: type[ValueType]):
         """
         Set a type in the config for parsing by associating a name with
         a type class.
 
         Args:
             name (string): Name of the type to set
-            type_class (type[TypeBase]): Class of (**not** instance of) the type to associate with the name
-
-        Returns:
-            None
+            type_class (type[ValueType]): Class of (**not** instance of) the type to associate with the name
         """
         self.__prop["types"][name] = type_class
 
     def get_constant(self, name: str) -> int:
         """
-        Get constant from the config, returning the associated integer value
+        Get constant from the config, returning the associated integer value.
 
         Args:
             name (string): Name of the constant to retrieve
 
         Returns:
             If the name is known, returns the value of the constant.
-            Otherwise, raises ConfigBadTypeException
+            Otherwise, raises ConfigBadTypeException.
         """
         constant_value = self.__prop["constants"].get(name, None)
         if constant_value is None:
-            raise ConfigBadTypeException(name, "Unknown constant name")
+            raise ConfigBadTypeException("Unknown constant name", name)
         return constant_value
 
     def set_constant(self, name: str, value: int):
@@ -153,7 +154,7 @@ class ConfigManager:
         """
         config_value = self.__prop["config"].get(name, None)
         if config_value is None:
-            raise ConfigBadTypeException(name, "Unknown config field name")
+            raise ConfigBadTypeException("Unknown config field name", name)
         return config_value
 
     def set_config(self, name: str, entry: Any):
@@ -171,7 +172,8 @@ class ConfigManager:
 
     def _set_defaults(self):
         """
-        Used by the constructor to set all ConfigManager defaults
+        Set all ConfigManager defaults. Needed for backwards compatibility if the flight dictionary
+        does not provide certain types or constants.
         """
         self.__prop["types"].update(
             {
@@ -180,6 +182,55 @@ class ConfigManager:
                 "FwEventIdType": U32Type,
                 "FwOpcodeType": U32Type,
                 "FwTlmPacketizeIdType": U16Type,
+                "FwSizeStoreType": U16Type,
+                "FwTimeContextStoreType": U8Type,
+                "TimeBase": EnumType.construct_type(
+                    "__GdsInternal_TimeBase_Fallback",
+                    {
+                        "TB_NONE": 0,
+                        # Processor cycle time. Not tried to external time
+                        "TB_PROC_TIME": 1,
+                        # Time on workstation where software is running. For testing.
+                        "TB_WORKSTATION_TIME": 2,
+                        # Time as reported by the SCLK.
+                        "TB_SC_TIME": 3,
+                        # Time as reported by the FPGA clock
+                        "TB_FPGA_TIME": 4,
+                        # Don't care value for sequences
+                        "TB_DONT_CARE": 0xFFFF,
+                    },
+                    rep_type="U16",
+                ),
+                "ComCfg.Apid": EnumType.construct_type(
+                    "__GdsInternal_Apid_Fallback",
+                    {
+                        # Command packet type - incoming
+                        "FW_PACKET_COMMAND": 0,
+                        # Telemetry packet type - outgoing
+                        "FW_PACKET_TELEM": 1,
+                        # Log type - outgoing
+                        "FW_PACKET_LOG": 2,
+                        # File type - incoming and outgoing
+                        "FW_PACKET_FILE": 3,
+                        # Packetized telemetry packet type
+                        "FW_PACKET_PACKETIZED_TLM": 4,
+                        # Idle packet
+                        "FW_PACKET_IDLE": 5,
+                        # Handshake packet
+                        "FW_PACKET_HAND": 0xFE,
+                        # Unknown packet
+                        "FW_PACKET_UNKNOWN": 0xFF,
+                        # Space Packet Idle APID
+                        "CCSDS_SPACE_PACKET_IDLE_APID": 0x7FF,
+                    },
+                    rep_type="U16",
+                ),
+            }
+        )
+        self.__prop["constants"].update(
+            {
+                "FW_SERIALIZE_TRUE_VALUE": 0xFF,
+                "FW_SERIALIZE_FALSE_VALUE": 0,
             }
         )
         self.__prop["config"].update(
@@ -188,6 +239,6 @@ class ConfigManager:
                 "msg_len": U32Type,
                 # Used for processing logged data from Svc.ComLogger
                 "key_val": U16Type,
-                "use_key": False
+                "use_key": False,
             }
         )
