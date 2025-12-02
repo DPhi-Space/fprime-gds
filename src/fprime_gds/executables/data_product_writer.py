@@ -264,13 +264,11 @@ class RecordStruct(BaseModel):
     type: Union[AliasType, StructType, ArrayType, IntegerType, FloatType, BoolType, QualifiedType, StringType]
     array: bool
     id: int
-    annotation: str
 
 class ContainerStruct(BaseModel):
     name: str
     id: int
     defaultPriority: int
-    annotation: str
 
 # -------------------------------------------------------------------------------------
 # These Pydantic classes define the FPRIME_DICTIONARY_FILE
@@ -771,7 +769,6 @@ class DataProductWriter:
         rootDict['dataId'] = self.read_field(headerJSON.dataId.underlyingType)
         for record in dictJSON.records:
             if record.id == rootDict['dataId']:    
-                print(f'Processing Record ID {record.id}')
                 if record.array:
                     dataSize = self.read_field(headerJSON.dataSize.type)
                     rootDict['size'] = dataSize
@@ -844,17 +841,17 @@ class DataProductWriter:
                 idSet.add(record.id)
 
 
-
-    # -------------------------------------------------------------------------------------------------------------------------
-    # Function process
+    # ----------------------------------------------------------------------------------------------
+    # Function: get_records
     #
-    # Description: 
-    #   Main processing
-    # -------------------------------------------------------------------------------------------------------------------------
-    def process(self):
-
+    # Description:
+    #   Reads all the records from the fdp file
+    #
+    # Returns:
+    #   List[Dict[str, obj]]: A list of dictionaries populated with the header followed by all records.
+    # ----------------------------------------------------------------------------------------------
+    def get_records(self):
         try:
-
             # Read the F prime JSON dictionary
             print(f"Parsing {self.jsonDict}...")
             try:
@@ -908,7 +905,20 @@ class DataProductWriter:
             msg = f'ValueError in JSON file {error["loc"]}: {error["msg"]}'
             self.handleException(msg)
 
+        return recordList
 
+    # ----------------------------------------------------------------------------------------------
+    # Function: write_records
+    #
+    # Description:
+    #   Writes all records to a json file
+    #
+    # Parameters:
+    #   recordList (List[Dict[str, obj]]): A list of dictionaries populated with the header followed by all records.
+    #
+    # Returns:
+    # ----------------------------------------------------------------------------------------------
+    def write_records(self, recordList):
         # Output the generated json to a file
         baseName = os.path.basename(self.binaryFileName)
         outputJsonFile = os.path.splitext(baseName)[0] + '.json'
@@ -918,6 +928,17 @@ class DataProductWriter:
             json.dump(recordList, file, indent=2)
 
         print(f'Output data generated in {outputJsonFile}')
+
+    # -------------------------------------------------------------------------------------------------------------------------
+    # Function process
+    #
+    # Description:
+    #   Main processing: parses records from the fdp file, then writes all records to a json file
+    # -------------------------------------------------------------------------------------------------------------------------
+    def process(self):
+        recordList = self.get_records()
+
+        self.write_records(recordList)
 
 
 # ------------------------------------------------------------------------------------------
