@@ -16,11 +16,62 @@ Example data that would be sent to a decoder that parses channels:
 
 @bug No known bugs
 """
-from fprime.common.models.serialize.time_type import TimeType
 
+from fprime.common.models.serialize.time_type import TimeType
+from datetime import datetime, timezone
 from fprime_gds.common.data_types.ch_data import ChData
 from fprime_gds.common.decoders.decoder import Decoder, DecodingException
 from fprime_gds.common.utils import config_manager
+import influxdb_client
+from influxdb_client.client.write_api import SYNCHRONOUS
+from enum import IntEnum
+
+
+MSB_NODE_MAP = {
+    0x5C: "MSPSWITCH",
+    0x5B: "MSPFPGA",
+    0x5D: "VORAGO",
+}
+
+HIGH_LEVEL = ["MPU1", "MPU2", "FPGA", "GPU"]
+
+
+INFLUXDB_BUCKET = "CG2-QM"
+INFLUXDB_ORG = "dphi-space"
+INFLUXDB_URL = "http://192.168.11.11:8086/"
+INFLUXDB_TOKEN = "V7RxoUQ9KffLTjsVSWPAp6yo8dupHWtWLaTQCImo2FwxEgUoV7i1ZNusydFLGzebfB_BOJsei2lrWMDhbtlpgw=="
+
+client = influxdb_client.InfluxDBClient(
+    url=INFLUXDB_URL, token=INFLUXDB_TOKEN, org=INFLUXDB_ORG, timeout=10000, gzip=True
+)
+write_api = client.write_api(write_options=SYNCHRONOUS)
+
+
+from datetime import datetime, timezone
+
+
+def fprime_time_to_datetime(t):
+    return datetime.fromtimestamp(
+        t.seconds,
+        tz=timezone.utc,
+    )
+
+
+def find_node(tlm_id: int, channel_name: str) -> str:
+    # 1) MSB-based resolution (authoritative)
+    msb = (tlm_id >> 8) & 0xFF
+
+    node = MSB_NODE_MAP.get(msb)
+    if node:
+        return node
+
+    # 2) Fallback: infer from channel name (case-insensitive)
+    name_upper = channel_name.upper()
+    for hl_node in HIGH_LEVEL:
+        if hl_node in name_upper:
+            return hl_node
+
+    return "UNKNOWN"
 
 
 class ChDecoder(Decoder):
@@ -65,8 +116,7 @@ class ChDecoder(Decoder):
         # list for decoded channel values
         ch_list = []
 
-        while (ptr < len(data)):
-
+        while ptr < len(data):
             # Decode Ch ID here...
             self.id_obj.deserialize(data, ptr)
             ptr += self.id_obj.getSize()
@@ -89,6 +139,33 @@ class ChDecoder(Decoder):
                 msg = f"Channel {ch_temp.name} failed to decode: {exc}"
                 raise DecodingException(msg)
             ch_list.append(ChData(val_obj, ch_time, ch_temp))
+            # todo here we put the data into the influxdb
+
+            node = find_node(ch_id, ch_temp.name)
+            # print("Channel data: ", node, ch_temp.name, val_obj.val, ch_id)
+
+            ts = fprime_time_to_datetime(ch_time)
+
+            point = (
+                influxdb_client.Point(ch_temp.name)
+                .tag("id", str(ch_id))
+                .tag("node", node)
+                .time(ts)
+            )
+
+            value = val_obj.val
+
+            if isinstance(value, (list, tuple)):
+                for i, v in enumerate(value):
+                    point.field(f"value_{i}", int(v))
+            else:
+                point.field("value", int(value))
+
+            write_api.write(
+                bucket=INFLUXDB_BUCKET,
+                org=INFLUXDB_ORG,
+                record=point,
+            )
             ptr += val_obj.getSize()
         return ch_list
 
