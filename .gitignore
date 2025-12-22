@@ -142,3 +142,4 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
+logs/2025_12_20-17_03_12
