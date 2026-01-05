@@ -47,6 +47,7 @@ fprime-gds \
   --ip-client \
   --ip-address "$addr" \
   --ip-port 8000 \
+  --gui-addr 0.0.0.0 \
   --keepalive-interval 0 \
   --no-zmq \
   --tts-port 50054
