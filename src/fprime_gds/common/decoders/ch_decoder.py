@@ -25,21 +25,49 @@ from fprime_gds.common.utils import config_manager
 import influxdb_client
 from influxdb_client.client.write_api import SYNCHRONOUS
 from enum import IntEnum
+from pathlib import Path
+import os
+import json
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Python colors
+RED = "\033[0;31m"
+GREEN = "\033[0;32m"
+YELLOW = "\033[1;33m"
+NC = "\033[0m"  # No Color
+
+# Try multiple .env locations
+paths = [Path('../.env'), Path('.env')]
+for p in paths:
+    if p.exists():
+        load_dotenv(p)
+        print(f"{GREEN}Loaded env from {p}{NC}")
+        break
+else:
+    print(f"{RED}No .env file found!{NC}")
+    exit(1)
+
+# Load configuration
+MCU_NODE_MAP = {int(k, 16): v for k, v in json.loads(os.environ["MCU_NODE_MAP"]).items()}
+HIGH_LEVEL = json.loads(os.environ["HIGH_LEVEL"])
+
+INFLUXDB_BUCKET = os.environ.get("INFLUXDB_BUCKET", "UNKNOWN")
+INFLUXDB_ORG = os.environ.get("INFLUXDB_ORG", "UNKNOWN")
+INFLUXDB_URL = os.environ.get("INFLUXDB_URL", "UNKNOWN")
+INFLUXDB_TOKEN = os.environ.get("INFLUXDB_TOKEN", "UNKNOWN")
 
 
-MSB_NODE_MAP = {
-    0x5C: "MSPSWITCH",
-    0x5B: "MSPFPGA",
-    0x5D: "VORAGO",
-}
-
-HIGH_LEVEL = ["MPU1", "MPU2", "FPGA", "GPU"]
-
-
-INFLUXDB_BUCKET = "CG2-QM"
-INFLUXDB_ORG = "dphi-space"
-INFLUXDB_URL = "http://192.168.11.11:8086/"
-INFLUXDB_TOKEN = "V7RxoUQ9KffLTjsVSWPAp6yo8dupHWtWLaTQCImo2FwxEgUoV7i1ZNusydFLGzebfB_BOJsei2lrWMDhbtlpgw=="
+# Verbose, visible print
+print(f"\n{YELLOW}############################################################{NC}")
+print(f"{YELLOW}SYSTEM CONFIGURATION:{NC}")
+print(f"  System Type      : {GREEN}{INFLUXDB_BUCKET}{NC}")
+print(f"  High-Level Nodes : {GREEN}{HIGH_LEVEL}{NC}")
+print(f"  MCU Node Map     : {GREEN}{MCU_NODE_MAP}{NC}")
+print(f"  InfluxDB Bucket  : {GREEN}{INFLUXDB_BUCKET}{NC}")
+print(f"  InfluxDB Org     : {GREEN}{INFLUXDB_ORG}{NC}")
+print(f"  InfluxDB URL     : {GREEN}{INFLUXDB_URL}{NC}")
+print(f"{YELLOW}############################################################{NC}\n")
 
 client = influxdb_client.InfluxDBClient(
     url=INFLUXDB_URL, token=INFLUXDB_TOKEN, org=INFLUXDB_ORG, timeout=10000, gzip=True
