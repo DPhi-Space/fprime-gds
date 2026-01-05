@@ -86,10 +86,9 @@ def fprime_time_to_datetime(t):
 
 
 def find_node(tlm_id: int, channel_name: str) -> str:
-    # 1) MSB-based resolution (authoritative)
     msb = (tlm_id >> 8) & 0xFF
 
-    node = MSB_NODE_MAP.get(msb)
+    node = MCU_NODE_MAP.get(msb)
     if node:
         return node
 
