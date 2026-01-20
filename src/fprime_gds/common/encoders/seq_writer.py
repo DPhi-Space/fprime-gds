@@ -31,7 +31,6 @@ class SeqBinaryWriter:
         self.desc_obj = config.get_type("FwPacketDescriptorType")
         self.opcode_obj = config.get_type("FwOpcodeType")
         self.len_obj = U16Type()  # config.get_type("msg_len")
-        print("FLAG ", self.desc_obj, self.opcode_obj, self.len_obj)
 
     def open(self, filename):
         """

@@ -23,6 +23,7 @@ from fprime_gds.common.data_types.ch_data import ChData
 from fprime_gds.common.decoders.decoder import Decoder, DecodingException
 from fprime_gds.common.utils import config_manager
 import influxdb_client
+import yaml
 from influxdb_client.client.write_api import SYNCHRONOUS
 from enum import IntEnum
 from pathlib import Path
@@ -37,20 +38,26 @@ GREEN = "\033[0;32m"
 YELLOW = "\033[1;33m"
 NC = "\033[0m"  # No Color
 
-# Try multiple .env locations
-paths = [Path('../.env'), Path('.env')]
+paths = [Path("testbench/configs/qm.yaml")]
 for p in paths:
     if p.exists():
-        load_dotenv(p)
-        print(f"{GREEN}Loaded env from {p}{NC}")
+        with open(p, "r") as f:
+            cfg = yaml.safe_load(f)
+        print(f"{GREEN}Loaded config from {p}{NC}")
         break
 else:
-    print(f"{RED}No .env file found!{NC}")
+    print(f"{RED}No config file found!{NC}")
     exit(1)
 
-# Load configuration
-MCU_NODE_MAP = {int(k, 16): v for k, v in json.loads(os.environ["MCU_NODE_MAP"]).items()}
-HIGH_LEVEL = json.loads(os.environ["HIGH_LEVEL"])
+HIGH_LEVEL = json.dumps(list(cfg.get("NODES", {}).keys()))
+
+# MCU_NODE_MAP: hex addr (string) -> name
+mcu_map = {}
+for name, mcu in cfg.get("MCUS", {}).items():
+    addr = mcu["csp"]["otv"]["addr"]
+    mcu_map[f"0x{addr:02X}"] = name.replace("_", "")
+
+MCU_NODE_MAP = json.dumps(mcu_map)
 
 INFLUXDB_BUCKET = os.environ.get("INFLUXDB_BUCKET", "UNKNOWN")
 INFLUXDB_ORG = os.environ.get("INFLUXDB_ORG", "UNKNOWN")
@@ -58,6 +65,7 @@ INFLUXDB_URL = os.environ.get("INFLUXDB_URL", "UNKNOWN")
 INFLUXDB_TOKEN = os.environ.get("INFLUXDB_TOKEN", "UNKNOWN")
 
 
+'''
 # Verbose, visible print
 print(f"\n{YELLOW}############################################################{NC}")
 print(f"{YELLOW}SYSTEM CONFIGURATION:{NC}")
@@ -68,6 +76,7 @@ print(f"  InfluxDB Bucket  : {GREEN}{INFLUXDB_BUCKET}{NC}")
 print(f"  InfluxDB Org     : {GREEN}{INFLUXDB_ORG}{NC}")
 print(f"  InfluxDB URL     : {GREEN}{INFLUXDB_URL}{NC}")
 print(f"{YELLOW}############################################################{NC}\n")
+'''
 
 client = influxdb_client.InfluxDBClient(
     url=INFLUXDB_URL, token=INFLUXDB_TOKEN, org=INFLUXDB_ORG, timeout=10000, gzip=True
@@ -173,6 +182,7 @@ class ChDecoder(Decoder):
 
             ts = fprime_time_to_datetime(ch_time)
 
+            '''
             point = (
                 influxdb_client.Point(ch_temp.name)
                 .tag("id", str(ch_id))
@@ -194,6 +204,7 @@ class ChDecoder(Decoder):
                 record=point,
             )
             ptr += val_obj.getSize()
+            '''
         return ch_list
 
     @staticmethod
