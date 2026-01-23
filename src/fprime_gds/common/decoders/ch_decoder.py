@@ -38,50 +38,49 @@ GREEN = "\033[0;32m"
 YELLOW = "\033[1;33m"
 NC = "\033[0m"  # No Color
 
-paths = [Path("testbench/configs/qm.yaml")]
+paths = []
+GRAFANA = False
+
+# Highest priority: explicit CONFIG_FILE
+if cfg_env := os.environ.get("CONFIG_FILE"):
+    paths.append(Path(cfg_env))
+
+# Fallbacks
+paths += [
+    Path("testbench/configs/qm.yaml"),
+    Path("../configs/qm.yaml"),
+]
+
 for p in paths:
     if p.exists():
         with open(p, "r") as f:
             cfg = yaml.safe_load(f)
         print(f"{GREEN}Loaded config from {p}{NC}")
+        GRAFANA = True
         break
 else:
-    print(f"{RED}No config file found!{NC}")
-    exit(1)
+    print("No valid config file found")
 
-HIGH_LEVEL = json.dumps(list(cfg.get("NODES", {}).keys()))
+if GRAFANA:
+    HIGH_LEVEL = json.dumps(list(cfg.get("NODES", {}).keys()))
 
 # MCU_NODE_MAP: hex addr (string) -> name
-mcu_map = {}
-for name, mcu in cfg.get("MCUS", {}).items():
-    addr = mcu["csp"]["otv"]["addr"]
-    mcu_map[f"0x{addr:02X}"] = name.replace("_", "")
-
-MCU_NODE_MAP = json.dumps(mcu_map)
-
-INFLUXDB_BUCKET = os.environ.get("INFLUXDB_BUCKET", "UNKNOWN")
-INFLUXDB_ORG = os.environ.get("INFLUXDB_ORG", "UNKNOWN")
-INFLUXDB_URL = os.environ.get("INFLUXDB_URL", "UNKNOWN")
-INFLUXDB_TOKEN = os.environ.get("INFLUXDB_TOKEN", "UNKNOWN")
+    mcu_map = {}
+    for name, mcu in cfg.get("MCUS", {}).items():
+        addr = mcu["csp"]["otv"]["addr"]
+        mcu_map[f"0x{addr:02X}"] = name.replace("_", "")
 
 
-'''
-# Verbose, visible print
-print(f"\n{YELLOW}############################################################{NC}")
-print(f"{YELLOW}SYSTEM CONFIGURATION:{NC}")
-print(f"  System Type      : {GREEN}{INFLUXDB_BUCKET}{NC}")
-print(f"  High-Level Nodes : {GREEN}{HIGH_LEVEL}{NC}")
-print(f"  MCU Node Map     : {GREEN}{MCU_NODE_MAP}{NC}")
-print(f"  InfluxDB Bucket  : {GREEN}{INFLUXDB_BUCKET}{NC}")
-print(f"  InfluxDB Org     : {GREEN}{INFLUXDB_ORG}{NC}")
-print(f"  InfluxDB URL     : {GREEN}{INFLUXDB_URL}{NC}")
-print(f"{YELLOW}############################################################{NC}\n")
-'''
+    INFLUXDB_BUCKET = os.environ.get("INFLUXDB_BUCKET", "UNKNOWN")
+    INFLUXDB_ORG = os.environ.get("INFLUXDB_ORG", "UNKNOWN")
+    INFLUXDB_URL = os.environ.get("INFLUXDB_URL", "UNKNOWN")
+    INFLUXDB_TOKEN = os.environ.get("INFLUXDB_TOKEN", "UNKNOWN")
 
-client = influxdb_client.InfluxDBClient(
-    url=INFLUXDB_URL, token=INFLUXDB_TOKEN, org=INFLUXDB_ORG, timeout=10000, gzip=True
-)
-write_api = client.write_api(write_options=SYNCHRONOUS)
+
+    client = influxdb_client.InfluxDBClient(
+        url=INFLUXDB_URL, token=INFLUXDB_TOKEN, org=INFLUXDB_ORG, timeout=10000, gzip=True
+    )
+    write_api = client.write_api(write_options=SYNCHRONOUS)
 
 
 from datetime import datetime, timezone
@@ -97,7 +96,7 @@ def fprime_time_to_datetime(t):
 def find_node(tlm_id: int, channel_name: str) -> str:
     msb = (tlm_id >> 8) & 0xFF
 
-    node = MCU_NODE_MAP.get(msb)
+    node = mcu_map.get(msb)
     if node:
         return node
 
@@ -177,34 +176,33 @@ class ChDecoder(Decoder):
             ch_list.append(ChData(val_obj, ch_time, ch_temp))
             # todo here we put the data into the influxdb
 
-            node = find_node(ch_id, ch_temp.name)
-            # print("Channel data: ", node, ch_temp.name, val_obj.val, ch_id)
+            if GRAFANA:
+                node = find_node(ch_id, ch_temp.name)
+                # print("Channel data: ", node, ch_temp.name, val_obj.val, ch_id)
 
-            ts = fprime_time_to_datetime(ch_time)
+                ts = fprime_time_to_datetime(ch_time)
 
-            '''
-            point = (
-                influxdb_client.Point(ch_temp.name)
-                .tag("id", str(ch_id))
-                .tag("node", node)
-                .time(ts)
-            )
+                point = (
+                    influxdb_client.Point(ch_temp.name)
+                    .tag("id", str(ch_id))
+                    .tag("node", node)
+                    .time(ts)
+                )
 
-            value = val_obj.val
+                value = val_obj.val
 
-            if isinstance(value, (list, tuple)):
-                for i, v in enumerate(value):
-                    point.field(f"value_{i}", int(v))
-            else:
-                point.field("value", int(value))
+                if isinstance(value, (list, tuple)):
+                    for i, v in enumerate(value):
+                        point.field(f"value_{i}", int(v))
+                else:
+                    point.field("value", int(value))
 
-            write_api.write(
-                bucket=INFLUXDB_BUCKET,
-                org=INFLUXDB_ORG,
-                record=point,
-            )
-            ptr += val_obj.getSize()
-            '''
+                write_api.write(
+                    bucket=INFLUXDB_BUCKET,
+                    org=INFLUXDB_ORG,
+                    record=point,
+                )
+                ptr += val_obj.getSize()
         return ch_list
 
     @staticmethod

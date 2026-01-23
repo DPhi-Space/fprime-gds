@@ -19,25 +19,44 @@ else
     exit 1
 fi
 
-# Default IP
+# Defaults
 addr='10.8.112.221'
+CONFIG_FILE="${CONFIG_FILE:-}"   # env override
 
-# Usage function
 usage() {
-    echo "Usage: $0 [local]"
-    echo "  local          Optional argument to connect to local address (0.0.0.0)"
+    echo "Usage: $0 [local] [--config <configfile>]"
+    echo
+    echo "Options:"
+    echo "  local                  Connect to 0.0.0.0"
+    echo "  --config <configfile>  YAML config file (exported as CONFIG_FILE)"
     exit 1
 }
 
-# Optional argument for local IP
-if [[ "$1" == "local" ]]; then
-    addr='0.0.0.0'
-elif [[ -n "$1" ]]; then
-    echo "Unknown argument: $1"
-    usage
-fi
+# Argument parsing
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        local)
+            addr='0.0.0.0'
+            shift
+            ;;
+        --config)
+            [[ -z "$2" ]] && usage
+            CONFIG_FILE="$2"
+            shift 2
+            ;;
+        *)
+            echo "Unknown argument: $1"
+            usage
+            ;;
+    esac
+done
 
-echo -e "${GREEN}Connecting to $addr${NC}\n"
+# Export so Python can read it
+export CONFIG_FILE
+
+echo -e "${GREEN}Connecting to $addr${NC}"
+[[ -n "$CONFIG_FILE" ]] && echo -e "${GREEN}Using config: $CONFIG_FILE${NC}"
+echo
 
 # Run fprime-gds
 fprime-gds \
@@ -50,4 +69,4 @@ fprime-gds \
   --gui-addr 0.0.0.0 \
   --keepalive-interval 0 \
   --no-zmq \
-  --tts-port 50054
+  --tts-port 50055
