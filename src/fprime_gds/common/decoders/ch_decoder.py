@@ -58,8 +58,6 @@ for p in paths:
         print(f"{GREEN}Loaded config from {p}{NC}")
         GRAFANA = True
         break
-else:
-    print("No valid config file found")
 
 if GRAFANA:
     HIGH_LEVEL = json.dumps(list(cfg.get("NODES", {}).keys()))
