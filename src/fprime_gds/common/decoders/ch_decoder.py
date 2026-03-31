@@ -40,6 +40,7 @@ NC = "\033[0m"  # No Color
 
 paths = []
 GRAFANA = False
+MCU_NAME_MAP = {}
 
 # Highest priority: explicit CONFIG_FILE
 if cfg_env := os.environ.get("CONFIG_FILE"):
@@ -60,14 +61,15 @@ for p in paths:
         break
 
 if GRAFANA:
-    HIGH_LEVEL = json.dumps(list(cfg.get("NODES", {}).keys()))
+    HIGH_LEVEL = list(cfg.get("NODES", {}).keys())
+    MCUS = list(cfg.get("MCUS", {}).keys())
 
 # MCU_NODE_MAP: hex addr (string) -> name
     mcu_map = {}
     for name, mcu in cfg.get("MCUS", {}).items():
         addr = mcu["csp"]["otv"]["addr"]
         mcu_map[f"0x{addr:02X}"] = name.replace("_", "")
-
+        MCU_NAME_MAP[name.replace("_", "").upper()] = name.replace("_", "")
 
     INFLUXDB_BUCKET = os.environ.get("INFLUXDB_BUCKET", "UNKNOWN")
     INFLUXDB_ORG = os.environ.get("INFLUXDB_ORG", "UNKNOWN")
@@ -79,6 +81,7 @@ if GRAFANA:
         url=INFLUXDB_URL, token=INFLUXDB_TOKEN, org=INFLUXDB_ORG, timeout=10000, gzip=True
     )
     write_api = client.write_api(write_options=SYNCHRONOUS)
+    print(f"Writing to {INFLUXDB_BUCKET}")
 
 
 from datetime import datetime, timezone
@@ -91,15 +94,17 @@ def fprime_time_to_datetime(t):
     )
 
 
-def find_node(tlm_id: int, channel_name: str) -> str:
-    msb = (tlm_id >> 8) & 0xFF
+def normalize_node_name(value: str) -> str:
+    return value.replace("_", "").upper()
 
-    node = mcu_map.get(msb)
-    if node:
-        return node
 
-    # 2) Fallback: infer from channel name (case-insensitive)
+def find_node(tlm_id: int, channel_comp: str, channel_name: str) -> str:
     name_upper = channel_name.upper()
+    comp_segment = (channel_comp or "").split(".")[-1]
+    comp_norm = normalize_node_name(comp_segment)
+    for mcu_norm, mcu_name in MCU_NAME_MAP.items():
+        if comp_norm and comp_norm in mcu_norm:
+            return mcu_name
     for hl_node in HIGH_LEVEL:
         if hl_node in name_upper:
             return hl_node
@@ -175,8 +180,8 @@ class ChDecoder(Decoder):
             # todo here we put the data into the influxdb
 
             if GRAFANA:
-                node = find_node(ch_id, ch_temp.name)
-                # print("Channel data: ", node, ch_temp.name, val_obj.val, ch_id)
+
+                node = find_node(ch_id, ch_temp.comp_name, ch_temp.name)
 
                 ts = fprime_time_to_datetime(ch_time)
 
@@ -188,6 +193,7 @@ class ChDecoder(Decoder):
                 )
 
                 value = val_obj.val
+                print("Channel data: ",ts, node, ch_temp.name, val_obj.val, ch_id)
 
                 if isinstance(value, (list, tuple)):
                     for i, v in enumerate(value):
